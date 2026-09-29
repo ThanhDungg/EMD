@@ -1,0 +1,48 @@
+/* Nút status mở rộng ngoài antd (success / info / warning solid) */
+.beca-btn-status-success {
+  background: var(--success-color-5);
+  border-color: var(--success-color-5);
+  color: #fff;
+}
+.beca-btn-status-success:hover {
+  background: var(--success-color-4) !important;
+  border-color: var(--success-color-4) !important;
+  color: #fff !important;
+}
+.beca-btn-status-success:active {
+  background: var(--success-color-6) !important;
+  border-color: var(--success-color-6) !important;
+  color: #fff !important;
+}
+
+.beca-btn-status-info {
+  background: var(--info-color-5);
+  border-color: var(--info-color-5);
+  color: #fff;
+}
+.beca-btn-status-info:hover {
+  background: var(--info-color-4) !important;
+  border-color: var(--info-color-4) !important;
+  color: #fff !important;
+}
+.beca-btn-status-info:active {
+  background: var(--info-color-6) !important;
+  border-color: var(--info-color-6) !important;
+  color: #fff !important;
+}
+
+.beca-btn-status-warning {
+  background: var(--warning-color-5);
+  border-color: var(--warning-color-5);
+  color: #fff;
+}
+.beca-btn-status-warning:hover {
+  background: var(--warning-color-4) !important;
+  border-color: var(--warning-color-4) !important;
+  color: #fff !important;
+}
+.beca-btn-status-warning:active {
+  background: var(--warning-color-6) !important;
+  border-color: var(--warning-color-6) !important;
+  color: #fff !important;
+}

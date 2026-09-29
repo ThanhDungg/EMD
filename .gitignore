@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Env — KHÔNG commit secret (DB password, JWT, pepper).
+# Chỉ giữ .env.example làm mẫu.
+.env
+.env.*
+!.env.example
+
+# Uploads & dữ liệu người dùng
+backend/uploads/
+backend/backups/
+
+# Prisma client tự sinh (cài lại bằng pnpm prisma:generate)
+backend/src/generated/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# Test / coverage
+coverage/
+.nyc_output/

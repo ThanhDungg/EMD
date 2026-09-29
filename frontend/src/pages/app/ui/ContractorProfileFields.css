@@ -1,0 +1,70 @@
+/* pages/app/ui/ContractorProfileFields — lưới 2 cột "title: nội dung" cho hồ sơ
+   nhà thầu (dùng chung modal thêm mới và trang chi tiết). */
+.contractor-profile-grid-wrap {
+  container-type: inline-size;
+}
+
+.contractor-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+  row-gap: 12px;
+}
+
+.contractor-profile-grid__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.contractor-profile-grid__item--full {
+  grid-column: 1 / -1;
+}
+
+.contractor-profile-grid__label {
+  flex: 0 0 160px;
+  text-align: right;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contractor-profile-grid__control {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.contractor-profile-grid__control .ant-form-item-control,
+.contractor-profile-grid__control .ant-form-item-control-input,
+.contractor-profile-grid__control .ant-form-item-control-input-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.contractor-profile-grid__control .ant-form-item-control-input-content > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@container (max-width: 640px) {
+  .contractor-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .contractor-profile-grid__label {
+    flex-basis: 130px;
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 760px) {
+    .contractor-profile-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

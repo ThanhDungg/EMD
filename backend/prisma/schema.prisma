@@ -1,0 +1,1540 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// ================= Bảng chính: người dùng =================
+model User {
+  id            Int          @id @default(autoincrement())
+  accountName   String       @unique @map("account_name")
+  email         String       @unique
+  password      String // bcrypt hash (mật khẩu + PASSWORD_PEPPER từ env)
+  fullName      String?      @map("full_name")
+  gender        Gender?
+  birthday      DateTime?    @db.Date
+  address       String?
+  internalPhone String?      @map("internal_phone")
+  phone         String?
+  hireDate      DateTime?    @map("hire_date") @db.Date
+  userLevel     Int?         @map("user_level")
+  avatarPath    String?      @map("avatar_path")
+  signaturePath String?      @map("signature_path")
+  isDeleted     Boolean      @default(false) @map("is_deleted")
+  // true = chủ đầu tư (tab riêng trên giao diện), false = nhân viên
+  isInvestor    Boolean      @default(false) @map("is_investor")
+  // Nhân viên được gán vào các dự án
+  siteMembers   SiteMember[]
+
+  // Hash của refresh token đang hiệu lực (null = đã đăng xuất)
+  refreshTokenHash String? @map("refresh_token_hash")
+
+  // --- Droplist: chức vụ (bảng riêng, sau này thêm field) ---
+  positionId Int?      @map("position_id")
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  // --- Droplist: đơn vị ---
+  departmentId Int?        @map("department_id")
+  department   Department? @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+
+  // --- Droplist: đồng đơn vị (cùng bảng đơn vị) ---
+  coDepartmentId Int?        @map("co_department_id")
+  coDepartment   Department? @relation("UserCoDepartment", fields: [coDepartmentId], references: [id], onDelete: SetNull)
+
+  // --- Droplist: tình trạng (bảng riêng) ---
+  statusId Int?        @map("status_id")
+  status   UserStatus? @relation(fields: [statusId], references: [id], onDelete: SetNull)
+
+  // --- Quản lý trực tiếp: lấy từ danh sách người dùng ---
+  managerId     Int?   @map("manager_id")
+  manager       User?  @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports User[] @relation("UserManager")
+
+  // --- Site mà user làm quản lý dự án ---
+  managedSites Site[] @relation("SiteManager")
+
+  // --- Droplist nhiều chọn: dự án (M2M) ---
+  projects Project[]
+
+  // --- Nhóm: 1 người nhiều nhóm, 1 nhóm nhiều người (M2M) ---
+  groups Group[]
+
+  // --- Phân hệ được phép xem (M2M qua Module.viewerUsers) ---
+  viewableModules Module[] @relation("ModuleViewers")
+
+  // --- Module Quy trình: việc tôi giao / việc tôi thực hiện ---
+  assignedTasks WorkflowTask[] @relation("TaskAssigner")
+  executedTasks WorkflowTask[] @relation("TaskAssignee")
+
+  // --- Bảng works: người giao / xử lý / theo dõi ---
+  assignedWorks Work[]        @relation("WorkAssigner")
+  handledWorks  WorkHandler[]
+  followedWorks Work[]        @relation("WorkFollowers")
+
+  // --- Lịch sử chuyển trạng thái do user thực hiện ---
+  statusHistoryChanges WorkStatusHistory[] @relation("HistoryChangedBy")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ================= Module Quy trình =================
+// Tab Ứng dụng: 5 loại công việc (mỗi loại 1 mã riêng — code để trống,
+// admin điền sau qua API). Seed trong prisma/seed.ts.
+model WorkflowCategory {
+  id                 Int              @id @default(autoincrement())
+  uuid               String           @unique @default(uuid())
+  code               String?          @unique
+  vnName             String           @map("vn_name")
+  engName            String?          @map("eng_name")
+  image              String?
+  isDeleted          Boolean          @default(false) @map("is_deleted")
+  tasks              WorkflowTask[]
+  works              Work[]
+  // Bộ trạng thái riêng của từng loại việc (mỗi loại 1 list status)
+  statuses           WorkflowStatus[]
+  // Loại này có cho đặt lịch lặp không (checklist + kiểm tra năng lượng)
+  supportsRecurrence Boolean          @default(false) @map("supports_recurrence")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("workflow_categories")
+}
+
+// Trạng thái của 1 loại công việc (VD loại Sự cố: Tiếp nhận → Đang xử lý →
+// Hoàn thành → Nghiệm thu...). Admin tự định nghĩa qua API, seed mặc định 4
+// trạng thái cho mỗi loại. Work trỏ tới đây thay vì enum cứng toàn hệ thống.
+model WorkflowStatus {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  // Mã trong phạm vi 1 loại (VD TODO) — unique theo cặp (categoryId, code)
+  code      String
+  name      String
+  // Màu hex hiển thị tag ở FE (VD #2174cd)
+  color     String?
+  sortOrder Int     @default(0) @map("sort_order")
+  // Trạng thái mặc định khi tạo work không chọn status
+  isDefault Boolean @default(false) @map("is_default")
+  // Trạng thái kết thúc (Hoàn thành, Đã huỷ...) — dùng thống kê công việc tồn
+  isClosed  Boolean @default(false) @map("is_closed")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  categoryId Int              @map("category_id")
+  category   WorkflowCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  works       Work[]
+  // Lịch sử trạng thái đi/đến (bảng work_status_histories)
+  historyFrom WorkStatusHistory[] @relation("HistoryFrom")
+  historyTo   WorkStatusHistory[] @relation("HistoryTo")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([categoryId, code])
+  @@index([categoryId, sortOrder])
+  @@map("workflow_statuses")
+}
+
+// Lịch sử chuyển trạng thái của work: mỗi lần đổi status (kể cả lúc tạo)
+// ghi 1 dòng {trạng thái trước → trạng thái sau, người đổi, thời điểm}.
+// FE render timeline ở trang detail.
+model WorkStatusHistory {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  workId Int  @map("work_id")
+  work   Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  // Null = chưa có trạng thái trước (lúc tạo work)
+  fromStatusId Int?            @map("from_status_id")
+  fromStatus   WorkflowStatus? @relation("HistoryFrom", fields: [fromStatusId], references: [id], onDelete: SetNull)
+
+  toStatusId Int?            @map("to_status_id")
+  toStatus   WorkflowStatus? @relation("HistoryTo", fields: [toStatusId], references: [id], onDelete: SetNull)
+
+  changedById Int  @map("changed_by_id")
+  changedBy   User @relation("HistoryChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  note String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([workId, id(sort: Desc)])
+  @@map("work_status_histories")
+}
+
+enum WorkflowTaskStatus {
+  TODO
+  DOING
+  DONE
+  CANCELLED
+}
+
+enum WorkflowPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Công việc: người giao (assigner) + người thực hiện (assignee).
+// Tab "Công việc của tôi": ?scope=assigned (tôi giao) | executed (tôi thực hiện).
+model WorkflowTask {
+  id          Int                @id @default(autoincrement())
+  uuid        String             @unique @default(uuid())
+  title       String
+  description String?
+  status      WorkflowTaskStatus @default(TODO)
+  priority    WorkflowPriority   @default(MEDIUM)
+  dueDate     DateTime?          @map("due_date") @db.Date
+  isDeleted   Boolean            @default(false) @map("is_deleted")
+
+  categoryId Int              @map("category_id")
+  category   WorkflowCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  assignerId Int  @map("assigner_id")
+  assigner   User @relation("TaskAssigner", fields: [assignerId], references: [id], onDelete: Restrict)
+
+  assigneeId Int?  @map("assignee_id")
+  assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("workflow_tasks")
+}
+
+// Tab Trang chủ module Quy trình: thông tin công ty + giới thiệu ứng dụng.
+// Chỉ 1 bản ghi duy nhất (id = 1), admin sửa qua API.
+model CompanyProfile {
+  id          Int     @id @default(autoincrement())
+  companyName String  @map("company_name")
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  logoPath    String? @map("logo_path")
+  description String? @db.Text
+  appIntro    String? @map("app_intro") @db.Text
+  isDeleted   Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("company_profile")
+}
+
+// Bảng works: thông tin công việc chi tiết, lọc theo workflow_categories.
+// Người giao (assigner) + người xử lý (handler) + người theo dõi (followers M2M).
+model Work {
+  id          Int              @id @default(autoincrement())
+  uuid        String           @unique @default(uuid())
+  title       String
+  description String?          @db.Text
+  // Tiến độ 0–100 (%)
+  progress    Int              @default(0)
+  // Trạng thái theo bộ status riêng của từng loại việc (workflow_statuses).
+  // Null = chưa đặt (hiếm — API tự gắn status mặc định của loại khi tạo).
+  statusId    Int?             @map("status_id")
+  status      WorkflowStatus?  @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  priority    WorkflowPriority @default(MEDIUM)
+  startDate   DateTime?        @map("start_date") @db.Date
+  endDate     DateTime?        @map("end_date") @db.Date
+  // Thời điểm hoàn thành thực tế
+  completedAt DateTime?        @map("completed_at")
+  // Vị trí thực hiện (tên địa điểm tự do)
+  location    String?
+  isDeleted   Boolean          @default(false) @map("is_deleted")
+
+  // Lọc theo loại công việc
+  categoryId Int              @map("category_id")
+  category   WorkflowCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  // Người giao (1 người duy nhất = user đăng nhập, tự gắn ở API)
+  assignerId Int  @map("assigner_id")
+  assigner   User @relation("WorkAssigner", fields: [assignerId], references: [id], onDelete: Restrict)
+
+  // Người thực hiện (nhiều người — bảng trung gian work_handlers).
+  // Không lưu dạng chuỗi "id1;id2": mất FK, query LIKE chậm + sai (id 1 match 11),
+  // không index/phân trang theo user được. ~1000 việc/ngày x 3 người = ~1tr dòng/năm,
+  // Postgres + index xử lý nhẹ nhàng.
+  handlers WorkHandler[]
+
+  // --- Công việc lặp mẫu (checklist + kiểm tra năng lượng) ---
+  // isRecurrence = true → dòng này là MẪU (giữ tiêu đề, nội dung, người thực hiện).
+  // Thông tin lặp (tần suất, ngày lặp, kết thúc) nằm ở bảng riêng
+  // work_recurrence_schedules — cron quét mẫu + đọc schedule để sinh work con.
+  isRecurrence         Boolean                 @default(false) @map("is_recurrence")
+  recurrenceScheduleId Int?                    @unique @map("recurrence_schedule_id")
+  recurrenceSchedule   WorkRecurrenceSchedule? @relation("TemplateSchedule", fields: [recurrenceScheduleId], references: [id], onDelete: SetNull)
+
+  // Work con sinh từ mẫu nào (null = tạo tay hoặc chính là mẫu).
+  // scheduledDate = ngày theo lịch. Unique chống sinh trùng khi cron chạy chồng.
+  recurrenceId  Int?      @map("recurrence_id")
+  recurrence    Work?     @relation("WorkRecurrence", fields: [recurrenceId], references: [id], onDelete: SetNull)
+  children      Work[]    @relation("WorkRecurrence")
+  scheduledDate DateTime? @map("scheduled_date") @db.Date
+
+  // Người theo dõi (nhiều người)
+  followers User[] @relation("WorkFollowers")
+
+  // Thuộc site nào (droplist)
+  siteId Int?  @map("site_id")
+  site   Site? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  // Phân loại sự cố (droplist, dùng cho loại Sự cố hư hỏng)
+  incidentTypeId Int?          @map("incident_type_id")
+  incidentType   IncidentType? @relation(fields: [incidentTypeId], references: [id], onDelete: SetNull)
+
+  // Chi tiết sự cố hư hỏng (1-1)
+  incidentDetail IncidentDetail?
+
+  // Lịch sử chuyển trạng thái (timeline ở FE)
+  statusHistories WorkStatusHistory[]
+
+  // Checklist cây cha-con của work
+  checklistItems ChecklistItem[]
+
+  // Các đợt kiểm tra năng lượng của work
+  energyChecks EnergyCheck[]
+
+  // Masterplan của work
+  masterplanSystems MasterplanSystem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([recurrenceId, scheduledDate])
+  // Lọc/sắp xếp mặc định: việc mới nhất + theo người giao/loại/trạng thái.
+  // Bắt buộc vì ~1000 việc/ngày — query không index sẽ full scan.
+  @@index([isDeleted, id(sort: Desc)])
+  @@index([assignerId])
+  @@index([categoryId])
+  @@index([statusId])
+  @@index([recurrenceId])
+  @@index([isRecurrence, categoryId])
+  @@map("works")
+}
+
+// Tần suất lịch lặp của công việc (checklist + kiểm tra năng lượng)
+enum RecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum QuarterlyMode {
+  START_OF_QUARTER
+  END_OF_QUARTER
+}
+
+// Kết thúc lặp: không bao giờ kết thúc, hoặc kết thúc vào ngày user chọn.
+enum RecurrenceEndType {
+  NEVER
+  ON_DATE
+}
+
+// Bảng setup thời gian lặp — CHỈ chứa thông tin lặp (không tiêu đề/nội dung,
+// những thứ đó nằm trên work mẫu). 1 mẫu ↔ 1 schedule.
+model WorkRecurrenceSchedule {
+  id            Int                 @id @default(autoincrement())
+  uuid          String              @unique @default(uuid())
+  frequency     RecurrenceFrequency
+  // Theo tuần: các thứ ISO (1 = Thứ 2 ... 7 = Chủ nhật)
+  weekdays      Int[]               @default([])
+  // Theo tháng: các ngày trong tháng (1-31, tháng thiếu ngày thì bỏ qua)
+  monthDays     Int[]               @default([]) @map("month_days")
+  // Theo quý: đầu quý (1/1, 1/4, 1/7, 1/10) hoặc cuối quý
+  quarterlyMode QuarterlyMode?      @map("quarterly_mode")
+  // Theo năm: 1 ngày trong năm (tháng + ngày, VD 29/2 chỉ năm nhuận)
+  yearMonth     Int?                @map("year_month")
+  yearDay       Int?                @map("year_day")
+
+  // Hiệu lực từ ngày (lịch lặp theo startDate của work mẫu nếu để trống)
+  startDate DateTime?         @map("start_date") @db.Date
+  // Kết thúc lặp: NEVER = chạy mãi, ON_DATE = dừng sau endDate
+  endType   RecurrenceEndType @default(NEVER) @map("end_type")
+  endDate   DateTime?         @map("end_date") @db.Date
+
+  // Tạm dừng (không xoá) / lần sinh kế tiếp (engine tự cập nhật)
+  isActive  Boolean   @default(true) @map("is_active")
+  nextRunAt DateTime? @map("next_run_at")
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  // Work mẫu dùng schedule này (1-1)
+  template Work? @relation("TemplateSchedule")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("work_recurrence_schedules")
+}
+
+// Người thực hiện của work (bảng trung gian M2M tường minh).
+// 1 work ~3 người; query chính "việc tôi xử lý" lọc theo userId nên index riêng.
+model WorkHandler {
+  workId Int  @map("work_id")
+  work   Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  userId Int  @map("user_id")
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@id([workId, userId])
+  @@index([userId])
+  @@map("work_handlers")
+}
+
+// Chi tiết sự cố hư hỏng (1-1 với Work thuộc loại Sự cố hư hỏng).
+// Ảnh lưu danh sách path; công việc tiếp theo là text thuần.
+model IncidentDetail {
+  id            Int           @id @default(autoincrement())
+  uuid          String        @unique @default(uuid())
+  // Ảnh hiện trạng lúc đầu / sau xử lý (mảng path ảnh)
+  beforeImages  String[]      @default([]) @map("before_images")
+  afterImages   String[]      @default([]) @map("after_images")
+  phase         String?
+  rbfRbw        String?       @map("rbf_rbw")
+  unit          String?
+  // Vị trí xảy ra sự cố — luôn thuộc 1 site và 1 node cây vị trí
+  locationId    Int?          @map("location_id")
+  location      SiteLocation? @relation("IncidentLocation", fields: [locationId], references: [id], onDelete: SetNull)
+  // Tài sản / thiết bị liên quan — luôn thuộc vị trí của sự cố
+  assetId       Int?          @map("asset_id")
+  asset         Asset?        @relation("IncidentAsset", fields: [assetId], references: [id], onDelete: SetNull)
+  // Denormalize tên để hiển thị nhanh (Vị trí / Tài sản)
+  locationName  String?       @map("location_name")
+  relatedAsset  String?       @map("related_asset") @db.Text
+  // Phân loại sửa chữa / hư hỏng / đơn vị phụ trách: FK droplist + nhãn
+  // denormalize (repair_type / damage_type / pic_unit) để hiển thị nhanh.
+  repairTypeId  Int?          @map("repair_type_id")
+  repairTypeRef RepairType?   @relation("IncidentRepairType", fields: [repairTypeId], references: [id], onDelete: SetNull)
+  repairType    String?       @map("repair_type")
+  damageTypeId  Int?          @map("damage_type_id")
+  damageTypeRef DamageType?   @relation("IncidentDamageType", fields: [damageTypeId], references: [id], onDelete: SetNull)
+  damageType    String?       @map("damage_type")
+  // Nguyên nhân
+  cause         String?       @db.Text
+  picUnitId     Int?          @map("pic_unit_id")
+  picUnitRef    PicUnit?      @relation("IncidentPicUnit", fields: [picUnitId], references: [id], onDelete: SetNull)
+  picUnit       String?       @map("pic_unit")
+  // Giải pháp khắc phục
+  solution      String?       @db.Text
+  // Công việc tiếp theo (text thuần)
+  nextWork      String?       @map("next_work") @db.Text
+  // Số lần mở lại sự cố
+  reopenCount   Int           @default(0) @map("reopen_count")
+  notes         String?       @db.Text
+  isDeleted     Boolean       @default(false) @map("is_deleted")
+
+  workId Int  @unique @map("work_id")
+  work   Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("incident_details")
+}
+
+// Kiểm tra năng lượng — cấu trúc 3 tầng:
+// đợt kiểm tra (cha: vd "kiểm tra đồng hồ điện ở nhà phụ trợ")
+// → đồng hồ (con: mỗi đồng hồ 1 mã)
+// → chỉ số theo pha (điện: bình thường/cao điểm/thấp điểm hoặc 1 pha;
+//    nước & dầu DO: chỉ pha bình thường).
+model EnergyCheck {
+  id        Int       @id @default(autoincrement())
+  uuid      String    @unique @default(uuid())
+  // Tiêu đề đợt kiểm tra (row cha)
+  title     String
+  location  String?
+  checkTime DateTime? @map("check_time")
+  notes     String?   @db.Text
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  meters EnergyMeter[]
+
+  workId Int?  @map("work_id")
+  work   Work? @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("energy_checks")
+}
+
+enum MeterType {
+  ELECTRICITY
+  WATER
+  DO_OIL
+}
+
+model EnergyMeter {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  // Mã đồng hồ (không unique toàn cục vì cùng 1 đồng hồ kiểm tra nhiều đợt)
+  meterCode   String    @map("meter_code")
+  meterType   MeterType @map("meter_type")
+  // Vị trí đồng hồ (mỗi đồng hồ 1 vị trí riêng)
+  location    String?
+  // Ảnh chụp đồng hồ (nhiều ảnh/đồng hồ) — path tương đối từ POST /api/uploads/images
+  attachments String[]  @default([])
+  checkpoint  Boolean   @default(false)
+  notes       String?   @db.Text
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+
+  readings EnergyReading[]
+
+  checkId Int         @map("check_id")
+  check   EnergyCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("energy_meters")
+}
+
+// Masterplan 3 cấp: system (level 1) → hạng mục (level 2)
+// → công việc thực hiện + field khác (level 3).
+// planData (data_json): kế hoạch + thực tế các tuần trong tháng của 1 năm,
+// shape xem MasterplanData trong workflow.constants.ts.
+model MasterplanSystem {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  vnName    String  @map("vn_name")
+  engName   String? @map("eng_name")
+  image     String?
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  categories MasterplanCategory[]
+
+  workId Int?  @map("work_id")
+  work   Work? @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("masterplan_systems")
+}
+
+model MasterplanCategory {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  vnName    String  @map("vn_name")
+  engName   String? @map("eng_name")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  tasks MasterplanTask[]
+
+  systemId Int              @map("system_id")
+  system   MasterplanSystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("masterplan_categories")
+}
+
+model MasterplanTask {
+  id             Int     @id @default(autoincrement())
+  uuid           String  @unique @default(uuid())
+  // Công việc thực hiện
+  title          String
+  // Người thực hiện / PIC (text tự do)
+  pic            String?
+  // Tần suất (vd: hàng tuần, hàng tháng, hàng quý)
+  frequency      String?
+  // Biểu mẫu áp dụng
+  formTemplate   String? @map("form_template")
+  // Phân loại
+  classification String?
+  // data_json: { "2026": { "1": { "1": { plan, actual }, ... } } }
+  planData       Json?   @map("plan_data")
+  isDeleted      Boolean @default(false) @map("is_deleted")
+
+  categoryId Int                @map("category_id")
+  category   MasterplanCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("masterplan_tasks")
+}
+
+enum MeterPhase {
+  NORMAL
+  PEAK
+  OFF_PEAK
+}
+
+model EnergyReading {
+  id         Int        @id @default(autoincrement())
+  uuid       String     @unique @default(uuid())
+  phase      MeterPhase @default(NORMAL)
+  startIndex Decimal    @map("start_index") @db.Decimal(18, 2)
+  endIndex   Decimal    @map("end_index") @db.Decimal(18, 2)
+  // Tổng tiêu thụ = chỉ số cuối − chỉ số đầu (server tự tính khi lưu)
+  total      Decimal    @db.Decimal(18, 2)
+  isDeleted  Boolean    @default(false) @map("is_deleted")
+
+  meterId Int         @map("meter_id")
+  meter   EnergyMeter @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("energy_readings")
+}
+
+// Checklist cây cha-con (dùng cho loại công việc Checklist).
+// Quy ước hiển thị: row cha chỉ show tiêu đề, row con show full thông tin.
+// parentId null = row cha gốc; sortOrder = thứ tự trong cùng cấp.
+model ChecklistItem {
+  id            Int                @id @default(autoincrement())
+  uuid          String             @unique @default(uuid())
+  // Tiêu đề (row cha chỉ cần mỗi field này)
+  title         String
+  // Tiêu chuẩn kiểm tra
+  standard      String?            @db.Text
+  // Loại nhập liệu của source cũ (Boolean/number/text/drop-down menu/multiselect...)
+  valueType     String?            @map("value_type")
+  // Độ ưu tiên của dòng (source cũ: "Bình thường")
+  itemPriority  String?            @map("item_priority")
+  // Bắt buộc nhập giá trị / bắt buộc đính kèm ảnh (source cũ: required/requiredImage)
+  required      Boolean            @default(false)
+  requiredImage Boolean            @default(false) @map("required_image")
+  // Số lượng / giá trị (decimal để nhập lẻ)
+  quantity      Decimal?           @db.Decimal(18, 2)
+  value         Decimal?           @db.Decimal(18, 2)
+  // File đính kèm (mảng path tương đối, VD /uploads/2026/09/<uuid>.jpg —
+  // upload qua POST /api/uploads/images, đọc qua GET /api/uploads/file)
+  attachments   String[]           @default([])
+  // Ảnh chụp trên điện thoại: lat/long vị trí chụp + thời gian chụp (source cũ:
+  // locationUploadImage/timeUpload theo từng dòng). Client gửi kèm 3 field này
+  // khi upload ảnh, backend echo lại cho client điền vào đây.
+  photoLat      Decimal?           @map("photo_lat") @db.Decimal(10, 7)
+  photoLng      Decimal?           @map("photo_lng") @db.Decimal(10, 7)
+  photoTakenAt  DateTime?          @map("photo_taken_at")
+  // Đã qua checkpoint hay chưa
+  checkpoint    Boolean            @default(false)
+  // Kết quả đánh giá nội dung con: PASS = Đạt, FAIL = Không đạt,
+  // null = chưa đánh giá (mặc định rỗng khi khởi tạo công việc).
+  result        String?            @map("result")
+  status        WorkflowTaskStatus @default(TODO)
+  notes         String?            @db.Text
+  // Thứ tự trong cùng cấp cha
+  sortOrder     Int                @default(0) @map("sort_order")
+  isDeleted     Boolean            @default(false) @map("is_deleted")
+
+  // Quan hệ cha-con (tự tham chiếu)
+  parentId Int?            @map("parent_id")
+  parent   ChecklistItem?  @relation("ChecklistTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children ChecklistItem[] @relation("ChecklistTree")
+
+  // Thuộc work nào (null = checklist độc lập)
+  workId Int?  @map("work_id")
+  work   Work? @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("checklist_items")
+}
+
+// ================= Droplist địa lý (quốc gia → miền → tỉnh thành → phường xã) =================
+model Country {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  code        String?      @unique
+  name        String
+  regions     Region[]
+  sites       Site[]
+  customers   Customer[]
+  investors   Investor[]
+  contractors Contractor[]
+  isDeleted   Boolean      @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("countries")
+}
+
+model Region {
+  id        Int        @id @default(autoincrement())
+  uuid      String     @unique @default(uuid())
+  code      String?    @unique
+  name      String
+  countryId Int        @map("country_id")
+  country   Country    @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  provinces Province[]
+  sites     Site[]
+  isDeleted Boolean    @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([countryId])
+  @@map("regions")
+}
+
+model Province {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  code        String?      @unique
+  name        String
+  regionId    Int          @map("region_id")
+  region      Region       @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  wards       Ward[]
+  sites       Site[]
+  customers   Customer[]
+  investors   Investor[]
+  contractors Contractor[]
+  isDeleted   Boolean      @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([regionId])
+  @@map("provinces")
+}
+
+model Ward {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  code        String?      @unique
+  name        String
+  provinceId  Int          @map("province_id")
+  province    Province     @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  sites       Site[]
+  customers   Customer[]
+  investors   Investor[]
+  contractors Contractor[]
+  isDeleted   Boolean      @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([provinceId])
+  @@map("wards")
+}
+
+// ================= Droplist: chủ đầu tư / loại hình & dịch vụ =================
+// Chủ đầu tư cha (droplist) — nhóm chủ đầu tư.
+model InvestorGroup {
+  id        Int        @id @default(autoincrement())
+  uuid      String     @unique @default(uuid())
+  code      String?    @unique
+  name      String
+  // Tên viết tắt
+  shortName String?    @map("short_name")
+  isDeleted Boolean    @default(false) @map("is_deleted")
+  investors Investor[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("investor_groups")
+}
+
+// Chủ đầu tư — chuyển từ droplist đơn giản sang hồ sơ đầy đủ trong
+// "Khai báo master data". Hồ sơ dự án vẫn chọn chủ đầu tư qua droplist
+// key `investor` (chỉ cần id + name).
+model Investor {
+  id                  Int            @id @default(autoincrement())
+  uuid                String         @unique @default(uuid())
+  // Mã chủ đầu tư (bắt buộc qua API chủ đầu tư; droplist cho phép trống)
+  code                String?        @unique
+  // Tên chủ đầu tư
+  name                String
+  // Thuộc chủ đầu tư cha
+  investorGroupId     Int?           @map("investor_group_id")
+  investorGroup       InvestorGroup? @relation(fields: [investorGroupId], references: [id], onDelete: SetNull)
+  // Mã số thuế
+  taxCode             String?        @map("tax_code")
+  // Đại diện pháp nhân
+  legalRepresentative String?        @map("legal_representative")
+  // Địa lý: quốc gia → tỉnh thành → phường xã (không có miền)
+  countryId           Int?           @map("country_id")
+  country             Country?       @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId          Int?           @map("province_id")
+  province            Province?      @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  wardId              Int?           @map("ward_id")
+  ward                Ward?          @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  // Số nhà, tên đường
+  address             String?
+  email               String?
+  hotline             String?
+  notes               String?        @db.Text
+  isDeleted           Boolean        @default(false) @map("is_deleted")
+  sites               Site[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([investorGroupId])
+  @@map("investors")
+}
+
+model ServiceType {
+  id        Int        @id @default(autoincrement())
+  uuid      String     @unique @default(uuid())
+  code      String?    @unique
+  name      String
+  isDeleted Boolean    @default(false) @map("is_deleted")
+  sites     Site[]
+  contracts Contract[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("service_types")
+}
+
+model ProvidedService {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  code        String?      @unique
+  name        String
+  isDeleted   Boolean      @default(false) @map("is_deleted")
+  sites       Site[]
+  contracts   Contract[]
+  contractors Contractor[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("provided_services")
+}
+
+// ================= 5 bảng con theo dự án =================
+
+// Nhân viên của dự án — thông tin nhân viên lấy từ users (tên/email/sđt/vị
+// trí công việc), bảng này chỉ gắn nhân viên vào dự án.
+model SiteMember {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  siteId    Int     @map("site_id")
+  site      Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  userId    Int     @map("user_id")
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([siteId, userId])
+  @@index([userId])
+  @@map("site_members")
+}
+
+// Nhà cung cấp dịch vụ của dự án
+model SiteServiceProvider {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  siteId    Int     @map("site_id")
+  site      Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([siteId])
+  @@map("site_service_providers")
+}
+
+// Nhà thầu của dự án
+model SiteContractor {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  siteId    Int     @map("site_id")
+  site      Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([siteId])
+  @@map("site_contractors")
+}
+
+// Thông tin liên lạc đối tác
+model SitePartnerContact {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  siteId    Int     @map("site_id")
+  site      Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  // Người liên hệ / bộ phận
+  name      String
+  email     String?
+  phone     String?
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([siteId])
+  @@map("site_partner_contacts")
+}
+
+// Unit: nhà kho / xưởng / văn phòng / khách thuê
+model SiteUnit {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  siteId    Int      @map("site_id")
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  // Mã nhà kho/xương/văn phòng
+  code      String
+  // Tên công ty / khách thuê
+  name      String
+  area      Decimal? @db.Decimal(18, 2)
+  status    String?
+  notes     String?  @db.Text
+  isDeleted Boolean  @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([siteId])
+  @@map("site_units")
+}
+
+// ================= Droplist: site (nơi thực hiện công việc) =================
+model Site {
+  id               Int                   @id @default(autoincrement())
+  uuid             String                @unique @default(uuid())
+  // Mã dự án
+  code             String?               @unique
+  // Tên dự án
+  name             String
+  // Lô / giai đoạn
+  lot              String?
+  stage            String?
+  // Số nhà, tên đường
+  address          String?
+  // Định vị: danh sách toạ độ "lat,lng" cách nhau bằng dấu ";"
+  // (client tự vẽ khoanh vùng trên bản đồ)
+  geoPoints        String?               @map("geo_points") @db.Text
+  // Địa lý phân cấp: quốc gia → miền → tỉnh thành → phường xã
+  countryId        Int?                  @map("country_id")
+  country          Country?              @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  regionId         Int?                  @map("region_id")
+  region           Region?               @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  provinceId       Int?                  @map("province_id")
+  province         Province?             @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  wardId           Int?                  @map("ward_id")
+  ward             Ward?                 @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  // Chủ đầu tư (droplist) / số tầng / loại hình dịch vụ (droplist)
+  investorId       Int?                  @map("investor_id")
+  investor         Investor?             @relation(fields: [investorId], references: [id], onDelete: SetNull)
+  floors           Int?
+  serviceTypeId    Int?                  @map("service_type_id")
+  serviceType      ServiceType?          @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  // Dịch vụ được cung cấp (droplist)
+  serviceId        Int?                  @map("service_id")
+  service          ProvidedService?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  // Diện tích (m2) + phần trăm lắp đầy
+  landArea         Decimal?              @map("land_area") @db.Decimal(18, 2)
+  gfaArea          Decimal?              @map("gfa_area") @db.Decimal(18, 2)
+  glaArea          Decimal?              @map("gla_area") @db.Decimal(18, 2)
+  roadArea         Decimal?              @map("road_area") @db.Decimal(18, 2)
+  leasedArea       Decimal?              @map("leased_area") @db.Decimal(18, 2)
+  greenArea        Decimal?              @map("green_area") @db.Decimal(18, 2)
+  occupancyRate    Decimal?              @map("occupancy_rate") @db.Decimal(5, 2)
+  // Ngày tiếp nhận dự án
+  receivedAt       DateTime?             @map("received_at") @db.Date
+  // 3 trạng thái nghiệp vụ
+  operationStatus  SiteOperationStatus?  @map("operation_status")
+  rentalStatus     SiteRentalStatus?     @map("rental_status")
+  managementStatus SiteManagementStatus? @map("management_status")
+  notes            String?               @db.Text
+  isDeleted        Boolean               @default(false) @map("is_deleted")
+  works            Work[]
+  // 5 bảng con theo dự án
+  members          SiteMember[]
+  serviceProviders SiteServiceProvider[]
+  contractors      SiteContractor[]
+  partnerContacts  SitePartnerContact[]
+  units            SiteUnit[]
+  // Cây vị trí của site: sự cố chọn vị trí theo site, tài sản gắn vị trí
+  locations        SiteLocation[]
+  // Khách hàng đang ở dự án này (nhiều-nhiều, bảng nối customer_sites)
+  customers        CustomerSite[]
+  // Hợp đồng thuộc dự án này (nhiều-nhiều, bảng nối contract_sites)
+  contracts        ContractSite[]
+
+  // Quản lý dự án của site — detail work suy ra từ site của nó
+  managerId Int?  @map("manager_id")
+  manager   User? @relation("SiteManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sites")
+}
+
+// ================= Khách hàng (danh mục kiểm tra năng lượng) =================
+
+// Trạng thái khách hàng: đang hoạt động / ngưng hoạt động
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Khách hàng — thuộc nhiều dự án (nhiều-nhiều qua customer_sites), dùng cho
+// danh mục kiểm tra năng lượng.
+model Customer {
+  id         Int            @id @default(autoincrement())
+  uuid       String         @unique @default(uuid())
+  // Mã khách hàng
+  code       String         @unique
+  // Tên khách hàng / tên viết tắt
+  name       String
+  shortName  String?        @map("short_name")
+  // Mã số thuế
+  taxCode    String?        @map("tax_code")
+  // Địa lý: quốc gia → tỉnh thành → phường xã (không dùng miền)
+  countryId  Int?           @map("country_id")
+  country    Country?       @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId Int?           @map("province_id")
+  province   Province?      @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  wardId     Int?           @map("ward_id")
+  ward       Ward?          @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  // Số nhà
+  address    String?
+  hotline    String?
+  email      String?
+  status     CustomerStatus @default(ACTIVE)
+  // Nhà xưởng (droplist)
+  factoryId  Int?           @map("factory_id")
+  factory    Factory?       @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  notes      String?        @db.Text
+  isDeleted  Boolean        @default(false) @map("is_deleted")
+  // Quan hệ nhiều-nhiều với dự án (site)
+  siteLinks  CustomerSite[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("customers")
+}
+
+// Bảng nối nhiều-nhiều khách hàng ↔ dự án: 1 khách hàng ở nhiều dự án và
+// 1 dự án có nhiều khách hàng.
+model CustomerSite {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  customerId Int      @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  siteId     Int      @map("site_id")
+  site       Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, siteId])
+  @@index([siteId])
+  @@map("customer_sites")
+}
+
+// Droplist: nhà xưởng của khách hàng
+model Factory {
+  id        Int        @id @default(autoincrement())
+  uuid      String     @unique @default(uuid())
+  code      String?    @unique
+  name      String
+  customers Customer[]
+  isDeleted Boolean    @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("factories")
+}
+
+// ================= Hợp đồng (khai báo master data) =================
+
+// Hợp đồng đầu vào / đầu ra
+enum ContractType {
+  INPUT
+  OUTPUT
+}
+
+// Loại thời gian: có thời hạn / không thời hạn
+enum ContractTermType {
+  TERM
+  OPEN_ENDED
+}
+
+model Contract {
+  id            Int                @id @default(autoincrement())
+  uuid          String             @unique @default(uuid())
+  // Mã hợp đồng
+  code          String             @unique
+  // Tên công ty
+  companyName   String             @map("company_name")
+  // Tên loại hợp đồng (VD "Hợp đồng dịch vụ bảo trì")
+  typeName      String             @map("type_name")
+  // Loại hợp đồng: đầu vào / đầu ra
+  contractType  ContractType       @map("contract_type")
+  // Loại hình dịch vụ (droplist `serviceType` của danh mục dự án)
+  serviceTypeId Int?               @map("service_type_id")
+  serviceType   ServiceType?       @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  // Ngày bắt đầu / kết thúc (null = không xác định)
+  startDate     DateTime?          @map("start_date") @db.Date
+  endDate       DateTime?          @map("end_date") @db.Date
+  // Có thời hạn / không thời hạn
+  termType      ContractTermType   @map("term_type")
+  notes         String?            @db.Text
+  isDeleted     Boolean            @default(false) @map("is_deleted")
+  // Quan hệ nhiều-nhiều với dự án (site)
+  siteLinks     ContractSite[]
+  // Bảng đường dẫn tài liệu của hợp đồng
+  documents     ContractDocument[]
+
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  providedService   ProvidedService? @relation(fields: [providedServiceId], references: [id])
+  providedServiceId Int?
+
+  @@index([contractType])
+  @@map("contracts")
+}
+
+// Bảng nối nhiều-nhiều hợp đồng ↔ dự án
+model ContractSite {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  contractId Int      @map("contract_id")
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  siteId     Int      @map("site_id")
+  site       Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([contractId, siteId])
+  @@index([siteId])
+  @@map("contract_sites")
+}
+
+// Đường dẫn tài liệu của hợp đồng (hiển thị bằng thẻ a sau khi lưu)
+model ContractDocument {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  contractId Int      @map("contract_id")
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Tên tài liệu
+  name       String
+  // Đường dẫn tài liệu (url hoặc path trong hệ thống tài liệu)
+  path       String   @db.Text
+  sortOrder  Int      @default(0) @map("sort_order")
+  isDeleted  Boolean  @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([contractId])
+  @@map("contract_documents")
+}
+
+// ================= Nhà thầu (khai báo master data) =================
+
+// Trạng thái nhà thầu: đang hoạt động / ngưng hoạt động
+enum ContractorStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Loại nhà thầu (droplist) — VD "Xây lắp", "Bảo trì"
+model ContractorType {
+  id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
+  code        String?      @unique
+  name        String
+  isDeleted   Boolean      @default(false) @map("is_deleted")
+  contractors Contractor[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("contractor_types")
+}
+
+// Nhà thầu — hồ sơ đầy đủ trong khai báo master data (khác với
+// `site_contractors` là bảng con ghi nhà thầu của 1 dự án).
+model Contractor {
+  id               Int              @id @default(autoincrement())
+  uuid             String           @unique @default(uuid())
+  // Mã nhà thầu
+  code             String?          @unique
+  // Tên nhà thầu
+  name             String
+  // Loại nhà thầu (droplist)
+  contractorTypeId Int?             @map("contractor_type_id")
+  contractorType   ContractorType?  @relation(fields: [contractorTypeId], references: [id], onDelete: SetNull)
+  // Dịch vụ cung cấp (droplist `service` dùng chung với danh mục dự án)
+  serviceId        Int?             @map("service_id")
+  service          ProvidedService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  // Mã số thuế
+  taxCode          String?          @map("tax_code")
+  hotline          String?
+  // Địa lý: quốc gia → tỉnh thành → phường xã
+  countryId        Int?             @map("country_id")
+  country          Country?         @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId       Int?             @map("province_id")
+  province         Province?        @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  wardId           Int?             @map("ward_id")
+  ward             Ward?            @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  // Số nhà, tên đường
+  address          String?
+  email            String?
+  status           ContractorStatus @default(ACTIVE)
+  notes            String?          @db.Text
+  isDeleted        Boolean          @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([contractorTypeId])
+  @@index([status])
+  @@map("contractors")
+}
+
+// ================= Module Tài sản =================
+
+// 3 trạng thái nghiệp vụ của dự án (site)
+enum SiteOperationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SiteRentalStatus {
+  RENTED
+  VACANT
+  PREPARING
+}
+
+enum SiteManagementStatus {
+  MANAGED
+  NOT_MANAGED
+  SUSPENDED
+}
+
+// Cây vị trí theo site: mỗi site có 1 list vị trí cha-con (VD "Tầng 1" →
+// "Phòng kế toán" → "Bàn 3"). Sự cố chọn 1 node vị trí của site đang chọn,
+// tài sản gắn vào 1 node vị trí.
+model SiteLocation {
+  id        Int              @id @default(autoincrement())
+  uuid      String           @unique @default(uuid())
+  code      String?          @unique
+  name      String
+  // null = vị trí gốc của site
+  parentId  Int?             @map("parent_id")
+  parent    SiteLocation?    @relation("SiteLocationTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  SiteLocation[]   @relation("SiteLocationTree")
+  // Vị trí luôn thuộc 1 site
+  siteId    Int              @map("site_id")
+  site      Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  assets    Asset[]
+  // Sự cố xảy ra tại vị trí này
+  incidents IncidentDetail[] @relation("IncidentLocation")
+  sortOrder Int              @default(0) @map("sort_order")
+  isDeleted Boolean          @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([siteId])
+  @@map("site_locations")
+}
+
+// Tài sản / thiết bị. Vị trí phải thuộc đúng site của tài sản (service chặn).
+model Asset {
+  id            Int               @id @default(autoincrement())
+  uuid          String            @unique @default(uuid())
+  // Mã tài sản
+  code          String            @unique
+  name          String
+  // Ngày đưa vào sử dụng
+  usageDate     DateTime?         @map("usage_date") @db.Date
+  // Trạng thái dùng (droplist)
+  usageStatusId Int?              @map("usage_status_id")
+  usageStatus   AssetUsageStatus? @relation(fields: [usageStatusId], references: [id], onDelete: SetNull)
+  // Thuộc danh mục tài sản nào (droplist)
+  categoryId    Int?              @map("category_id")
+  category      AssetCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Vị trí đặt tài sản (thuộc 1 site)
+  locationId    Int?              @map("location_id")
+  location      SiteLocation?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  // Nhà cung cấp / xuất xứ / model
+  supplier      String?
+  origin        String?
+  model         String?
+  // Số lượng + đơn vị tính (droplist)
+  quantity      Decimal?          @db.Decimal(18, 2)
+  unitId        Int?              @map("unit_id")
+  unit          AssetUnit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  // Hạn bảo hành
+  warrantyEnd   DateTime?         @map("warranty_end") @db.Date
+  // Tình trạng (droplist)
+  conditionId   Int?              @map("condition_id")
+  condition     AssetCondition?   @relation(fields: [conditionId], references: [id], onDelete: SetNull)
+  remarks       String?           @db.Text
+  // Thông tin chi tiết (text tự do)
+  detail        String?           @db.Text
+  isDeleted     Boolean           @default(false) @map("is_deleted")
+  // Sự cố liên quan tới tài sản này
+  incidents     IncidentDetail[]  @relation("IncidentAsset")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([locationId])
+  @@index([categoryId])
+  @@map("assets")
+}
+
+// ================= Droplist: danh mục tài sản =================
+model AssetCategory {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  assets    Asset[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("asset_categories")
+}
+
+// ================= Droplist: đơn vị tính =================
+model AssetUnit {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  assets    Asset[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("asset_units")
+}
+
+// ================= Droplist: trạng thái dùng =================
+model AssetUsageStatus {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  assets    Asset[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("asset_usage_statuses")
+}
+
+// ================= Droplist: tình trạng tài sản =================
+model AssetCondition {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  assets    Asset[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("asset_conditions")
+}
+
+// ================= Droplist: phân loại sửa chữa / hư hỏng / đơn vị phụ trách
+// (dùng ở module Ứng dụng — card "Danh mục dữ liệu" cho sự cố) =================
+model RepairType {
+  id        Int              @id @default(autoincrement())
+  uuid      String           @unique @default(uuid())
+  code      String?          @unique
+  name      String
+  isDeleted Boolean          @default(false) @map("is_deleted")
+  incidents IncidentDetail[] @relation("IncidentRepairType")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("repair_types")
+}
+
+model DamageType {
+  id        Int              @id @default(autoincrement())
+  uuid      String           @unique @default(uuid())
+  code      String?          @unique
+  name      String
+  isDeleted Boolean          @default(false) @map("is_deleted")
+  incidents IncidentDetail[] @relation("IncidentDamageType")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("damage_types")
+}
+
+model PicUnit {
+  id        Int              @id @default(autoincrement())
+  uuid      String           @unique @default(uuid())
+  code      String?          @unique
+  name      String
+  isDeleted Boolean          @default(false) @map("is_deleted")
+  incidents IncidentDetail[] @relation("IncidentPicUnit")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("pic_units")
+}
+
+// ================= Droplist: phân loại sự cố =================
+model IncidentType {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  works     Work[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("incident_types")
+}
+
+// ================= Bảng droplist: chức vụ (mở rộng sau) =================
+model Position {
+  id        Int     @id @default(autoincrement())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  users     User[]
+
+  @@map("positions")
+}
+
+// ================= Bảng droplist: đơn vị (mở rộng sau) =================
+model Department {
+  id        Int     @id @default(autoincrement())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  users     User[]  @relation("UserDepartment")
+  coUsers   User[]  @relation("UserCoDepartment")
+
+  @@map("departments")
+}
+
+// ================= Bảng droplist: dự án (mở rộng sau) =================
+model Project {
+  id        Int     @id @default(autoincrement())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  users     User[]
+
+  @@map("projects")
+}
+
+// ================= Bảng droplist: tình trạng (mở rộng sau) =================
+model UserStatus {
+  id        Int     @id @default(autoincrement())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  users     User[]
+
+  @@map("user_statuses")
+}
+
+// ================= Nhóm người dùng =================
+// M2M 2 chiều với User; mỗi group gắn nhiều quyền (Permission)
+model Group {
+  id              Int          @id @default(autoincrement())
+  uuid            String       @unique @default(uuid())
+  code            String?      @unique
+  name            String
+  image           String?
+  isDeleted       Boolean      @default(false) @map("is_deleted")
+  users           User[]
+  permissions     Permission[]
+  // Phân hệ mà group này được xem
+  viewableModules Module[]     @relation("ModuleViewerGroups")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("groups")
+}
+
+// ================= Quyền (gán vào từng group) =================
+// rank càng cao quyền càng lớn — thứ tự: ADMIN > CEO > HO >
+// PROJECT_MANAGER > TECHNICIAN > SECURITY_GUARD > INVESTOR.
+// Seed trong prisma/seed.ts (dùng chung constants với code).
+model Permission {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  description String?
+  rank        Int     @default(0)
+  isDeleted   Boolean @default(false) @map("is_deleted")
+  groups      Group[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+// ================= Phân hệ / Module ứng dụng =================
+// 8 module core seed sẵn (admin thêm mới tự do qua API POST /modules).
+// Quyền xem = danh sách user (M2M) + danh sách group (M2M).
+model Module {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  code      String? @unique
+  image     String?
+  vnName    String  @map("vn_name")
+  engName   String? @map("eng_name")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  viewerUsers  User[]  @relation("ModuleViewers")
+  viewerGroups Group[] @relation("ModuleViewerGroups")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("modules")
+}

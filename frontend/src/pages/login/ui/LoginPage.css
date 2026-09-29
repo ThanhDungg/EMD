@@ -1,0 +1,38 @@
+/* Trang đăng nhập: căn giữa màn hình, card trắng trên nền beca */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--primary-background-color);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  box-shadow:
+    rgba(0, 0, 0, 0.08) 0 10px 25px -5px,
+    rgba(0, 0, 0, 0.04) 0 4px 10px -2px;
+}
+
+.login-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--primary-text-color);
+}
+
+.login-subtitle {
+  margin: 4px 0 20px;
+  font-size: 14px;
+  color: var(--gray-text-color);
+}
+
+.login-card .ant-alert {
+  margin-bottom: 16px;
+}
+
+.login-remember {
+  margin-bottom: 12px;
+}

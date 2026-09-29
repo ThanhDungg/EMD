@@ -1,0 +1,54 @@
+/* CSS variables tương đương bộ var(--*-color-*) của beca-ui.
+   Dùng cho các component custom (status button, badge...) ngoài antd theme. */
+:root {
+  --info-color-1: #e7f1fc;
+  --info-color-2: #cde3fa;
+  --info-color-3: #7aace1;
+  --info-color-4: #4d90d7;
+  --info-color-5: #2174cd;
+  --info-color-6: #2264ac;
+  --info-color-7: #14467b;
+  --info-color-8: #0d2e52;
+
+  --primary-color-1: var(--info-color-1);
+  --primary-color-2: var(--info-color-2);
+  --primary-color-3: var(--info-color-3);
+  --primary-color-4: var(--info-color-4);
+  --primary-color-5: var(--info-color-5);
+  --primary-color-6: var(--info-color-6);
+  --primary-color-7: var(--info-color-7);
+  --primary-color-8: var(--info-color-8);
+
+  --success-color-1: #e4f4e8;
+  --success-color-2: #b2d7ba;
+  --success-color-3: #8cc398;
+  --success-color-4: #65af75;
+  --success-color-5: #3f9b53;
+  --success-color-6: #327c42;
+  --success-color-7: #265d32;
+  --success-color-8: #193e21;
+
+  --warning-color-1: #fef7e6;
+  --warning-color-2: #f9dfac;
+  --warning-color-3: #f7cf82;
+  --warning-color-4: #eeb956;
+  --warning-color-5: #f5b128;
+  --warning-color-6: #c18c26;
+  --warning-color-7: #91691c;
+  --warning-color-8: #604613;
+
+  --danger-color-1: #ffe0e0;
+  --danger-color-2: #f3c1c1;
+  --danger-color-3: #e38080;
+  --danger-color-4: #df5252;
+  --danger-color-5: #f42020;
+  --danger-color-6: #c31f1f;
+  --danger-color-7: #7d1a1a;
+  --danger-color-8: #531111;
+
+  --primary-text-color: #10142f;
+  --gray-text-color: #8f96a5;
+  --primary-background-color: #f3f5f9;
+  --secondary-background-color: #ffffff;
+  --tertiary-background-color: #f7f7f7;
+}

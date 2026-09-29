@@ -1,0 +1,81 @@
+{
+  "title": "Checklist A — Vệ sinh văn phòng",
+  "notes": "Mẫu kiểm tra vệ sinh văn phòng hằng ngày. Cấu trúc: danh mục → nội dung cha → nội dung con.",
+  "children": [
+    {
+      "title": "Khu vực làm việc chung",
+      "children": [
+        {
+          "title": "Lau bàn ghế",
+          "standard": "Mặt bàn ghế không bụi bẩn, sắp xếp gọn gàng",
+          "valueType": "BOOLEAN",
+          "quantity": 10
+        },
+        {
+          "title": "Lau sàn khu làm việc chung",
+          "standard": "Sàn khô ráo, không trơn trượt",
+          "valueType": "BOOLEAN",
+          "quantity": 1
+        },
+        {
+          "title": "Đổ rác, thay túi rác mới",
+          "standard": "Thùng rác trống, đã thay túi mới",
+          "valueType": "BOOLEAN",
+          "quantity": 4
+        },
+        {
+          "title": "Ghi chú hiện trạng khu vực",
+          "standard": "Mô tả vấn đề phát sinh trong ca (nếu có)",
+          "valueType": "TEXT",
+          "quantity": null
+        }
+      ]
+    },
+    {
+      "title": "Nhà vệ sinh",
+      "children": [
+        {
+          "title": "Cọ rửa bồn cầu, lavabo",
+          "standard": "Thiết bị trắng sạch, không ố vàng",
+          "valueType": "BOOLEAN",
+          "quantity": 3
+        },
+        {
+          "title": "Khử mùi, mở thông gió",
+          "standard": "Không còn mùi hôi",
+          "valueType": "BOOLEAN",
+          "quantity": 1
+        },
+        {
+          "title": "Bổ sung giấy và xà phòng",
+          "standard": "Ghi số vị trí bị thiếu",
+          "valueType": "NUMBER",
+          "quantity": null
+        }
+      ]
+    },
+    {
+      "title": "Khu vực pantry",
+      "children": [
+        {
+          "title": "Vệ sinh tủ lạnh",
+          "standard": "Không đồ hết hạn, khay kệ sạch",
+          "valueType": "BOOLEAN",
+          "quantity": 1
+        },
+        {
+          "title": "Lau lò vi sóng",
+          "standard": "Lòng lò sạch, không mùi thức ăn",
+          "valueType": "BOOLEAN",
+          "quantity": 1
+        },
+        {
+          "title": "Số hộp thực phẩm hết hạn đã loại bỏ",
+          "standard": "Ghi số hộp đã loại trong kỳ kiểm tra",
+          "valueType": "NUMBER",
+          "quantity": null
+        }
+      ]
+    }
+  ]
+}

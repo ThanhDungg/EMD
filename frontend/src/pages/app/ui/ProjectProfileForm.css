@@ -1,0 +1,78 @@
+/* pages/app/ui/ProjectProfileForm — hồ sơ dự án hiển thị dạng lưới 2 cột:
+   mỗi ô là "title: nội dung", 2 ô trên 1 hàng, giãn đều nhau theo chiều ngang
+   và dọc. Ô có nội dung dài (địa chỉ, định vị) chiếm trọn 1 hàng.
+   Bề rộng cột quyết định theo CHIỀU RỘNG CONTAINER (container query) nên modal
+   thêm dự án và trang chi tiết đều ra đúng 2 cột, chỉ xuống 1 cột khi khung
+   chứa thật sự hẹp (điện thoại). */
+.project-profile-grid-wrap {
+  container-type: inline-size;
+}
+
+.project-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+  row-gap: 12px;
+}
+
+.project-profile-grid__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Ô rộng hết 1 hàng (địa chỉ, định vị). */
+.project-profile-grid__item--full {
+  grid-column: 1 / -1;
+}
+
+.project-profile-grid__label {
+  flex: 0 0 150px;
+  text-align: right;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-profile-grid__control {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+/* Ép mọi control (Input/Select/DatePicker/InputNumber) lấp đầy ô. */
+.project-profile-grid__control .ant-form-item-control,
+.project-profile-grid__control .ant-form-item-control-input,
+.project-profile-grid__control .ant-form-item-control-input-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-profile-grid__control .ant-form-item-control-input-content > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Khung chứa hẹp (điện thoại) mới xuống 1 cột. */
+@container (max-width: 640px) {
+  .project-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .project-profile-grid__label {
+    flex-basis: 120px;
+  }
+}
+
+/* Trình duyệt không hỗ trợ container query → dựa theo bề rộng cửa sổ. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 760px) {
+    .project-profile-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

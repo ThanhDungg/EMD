@@ -1,0 +1,26 @@
+/* Khung sau đăng nhập: header mảnh + nội dung */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-shell-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--secondary-background-color);
+  border-bottom: 1px solid var(--info-color-2);
+}
+
+.auth-shell-brand {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--info-color-5);
+}
+
+.auth-shell-body {
+  flex: 1;
+}

@@ -1,0 +1,80 @@
+/* pages/app/ui/ContractProfileFields — bộ field hợp đồng dạng lưới 2 cột
+   "title: nội dung" (dùng chung cho modal thêm và trang chi tiết).
+   Hợp đồng thuộc NHIỀU dự án → ô "Dự án" chọn nhiều, backend tách mảng id ra
+   lưu bảng nối contract_sites. */
+.contract-profile-grid-wrap {
+  container-type: inline-size;
+}
+
+.contract-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+  row-gap: 12px;
+}
+
+.contract-profile-grid__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.contract-profile-grid__item--full {
+  grid-column: 1 / -1;
+}
+
+.contract-profile-grid__item--top {
+  align-items: flex-start;
+}
+
+.contract-profile-grid__item--top .contract-profile-grid__label {
+  line-height: 32px;
+}
+
+.contract-profile-grid__label {
+  flex: 0 0 150px;
+  text-align: right;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contract-profile-grid__control {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.contract-profile-grid__control .ant-form-item-control,
+.contract-profile-grid__control .ant-form-item-control-input,
+.contract-profile-grid__control .ant-form-item-control-input-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.contract-profile-grid__control .ant-form-item-control-input-content > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@container (max-width: 640px) {
+  .contract-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .contract-profile-grid__label {
+    flex-basis: 120px;
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 760px) {
+    .contract-profile-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}
