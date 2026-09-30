@@ -8,7 +8,5 @@ node_modules
 dist
 
 # Ảnh đính kèm upload (ngoài public, chỉ đọc qua API)
-uploads/
 
 # Backup dữ liệu trước khi xoá hẳn (script dùng 1 lần)
-backups/

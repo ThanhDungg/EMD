@@ -14,11 +14,8 @@ build/
 !.env.example
 
 # Uploads & dữ liệu người dùng
-backend/uploads/
-backend/backups/
 
 # Prisma client tự sinh (cài lại bằng pnpm prisma:generate)
-backend/src/generated/
 
 # Logs
 logs/
