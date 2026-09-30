@@ -5,10 +5,11 @@ import {
   addCascadeLists,
   buildImportError,
   cellText,
+  columnLetter,
   normalizeText,
-  parseIdValue,
-  parseIntValue,
+  splitNameId,
   splitPath,
+  withIdSuffix,
 } from '../../common/excel.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
@@ -20,14 +21,10 @@ const REF_SHEET = 'Danh mục';
 const GUIDE_SHEET = 'Hướng dẫn';
 
 type ColumnKey =
-  | 'siteId'
   | 'siteName'
-  | 'locationId'
-  | 'parentId'
   | 'parentPath'
   | 'name'
-  | 'code'
-  | 'sortOrder';
+  | 'code';
 
 interface ColumnDef {
   key: ColumnKey;
@@ -41,36 +38,23 @@ interface ColumnDef {
  * Cây vị trí: mỗi dự án có nhiều vị trí, vị trí có thể lồng nhau
  * (tầng > phòng > vị trí nhỏ). Cột "Vị trí cha" nhận đường dẫn đầy đủ
  * tính từ cấp 1 của dự án, ví dụ "Tầng 1 > Hành chính".
- * Cặp ID + Tên: khi cột ID có số thì lấy đúng bản ghi đó (ưu tiên hơn tên).
+ * Không có cột ID rời: cột tham chiếu nhập theo dạng "Tên (id)" — ví dụ
+ * "Tòa A (1)", "Tầng 1 > Hành chính (4)". BE bóc id trong ngoặc để lấy
+ * đúng bản ghi; chỉ gõ tên vẫn được (khớp không phân biệt hoa/dấu).
  */
 const COLUMNS: ColumnDef[] = [
-  {
-    key: 'siteId',
-    header: 'ID dự án',
-    width: 12,
-  },
   {
     key: 'siteName',
     header: 'Dự án',
     width: 26,
     required: true,
-    example: 'Tòa A - Khu văn phòng',
-  },
-  {
-    key: 'locationId',
-    header: 'ID vị trí',
-    width: 12,
-  },
-  {
-    key: 'parentId',
-    header: 'ID vị trí cha',
-    width: 14,
+    example: 'Tòa A - Khu văn phòng (1)',
   },
   {
     key: 'parentPath',
     header: 'Vị trí cha',
     width: 40,
-    example: 'Tầng 1 > Hành chính',
+    example: 'Tầng 1 > Hành chính (4)',
   },
   {
     key: 'name',
@@ -80,7 +64,6 @@ const COLUMNS: ColumnDef[] = [
     example: 'Phòng kế toán',
   },
   { key: 'code', header: 'Mã vị trí', width: 20, example: 'A-T1-HC-PKT' },
-  { key: 'sortOrder', header: 'Thứ tự', width: 10, example: '1' },
 ];
 
 const GUIDE_ROWS: Array<[string, string]> = [
@@ -96,15 +79,15 @@ const GUIDE_ROWS: Array<[string, string]> = [
   ['3', 'Cột "Dự án" và "Tên vị trí" là bắt buộc. Các cột còn lại để trống được.'],
   [
     '4',
-    'Mỗi cột ID đi kèm 1 cột tên (ID dự án + Dự án, ID vị trí cha + Vị trí cha...). Khi cột ID có số thì lấy đúng bản ghi đó, không cần khớp tên.',
+    'Các cột tham chiếu (Dự án, Vị trí cha) nhập theo dạng "Tên (id)" — ví dụ "Tòa A (1)", "Tầng 1 > Hành chính (4)". Phần (id) trong ngoặc giúp lấy đúng bản ghi, tránh nhầm khi trùng tên.',
   ],
   [
     '5',
-    'Cột ID để trống mới khớp theo tên. "ID vị trí" có số nghĩa là SỬA đúng vị trí đó (không đổi cha qua file import).',
+    'Chỉ gõ tên (không có "(id)") vẫn được: khớp không phân biệt hoa thường và dấu tiếng Việt. Nếu tên bị trùng, hệ thống báo lỗi và gợi ý (id) — xem sheet "Danh mục" để copy đúng chuỗi "Tên (id)".',
   ],
   [
     '6',
-    'Cột "Vị trí cha" ghi đường dẫn từ vị trí cấp 1, phân tách bằng dấu ">" hoặc "/". Để trống nghĩa là vị trí cấp 1. Có "ID vị trí cha" thì không cần đường dẫn.',
+    'Cột "Vị trí cha" ghi đường dẫn từ vị trí cấp 1, phân tách bằng dấu ">" hoặc "/". Để trống nghĩa là vị trí cấp 1. Có "(id)" ở cuối thì không cần điền cột "Dự án" vẫn được.',
   ],
   [
     '7',
@@ -112,15 +95,15 @@ const GUIDE_ROWS: Array<[string, string]> = [
   ],
   [
     '8',
-    'Muốn nhập nhiều đợt: nhập vị trí cha đợt 1, bấm "Xuất Excel" để lấy ID, điền "ID vị trí cha" ở đợt 2.',
+    'Muốn nhập nhiều đợt: nhập vị trí cha đợt 1, bấm "Xuất Excel" để lấy file đã có sẵn "Tên (id)", dùng tiếp cho đợt 2.',
   ],
   [
     '9',
-    'Nếu dự án + vị trí cha + tên đã tồn tại, hệ thống CẬP NHẬT bản ghi cũ thay vì tạo mới. Nhập lại file nhiều lần được.',
+    'Nếu dự án + vị trí cha + tên đã tồn tại, hệ thống CẬP NHẬT bản ghi cũ thay vì tạo mới. Nhập lại file nhiều lần được. Muốn đổi tên hoặc đổi cha thì sửa trực tiếp trên giao diện.',
   ],
   [
     '10',
-    'Dropdown LIÊN KẾT: chọn "Dự án" (tên hoặc ID) trước, dropdown "Vị trí cha" cùng dòng tự lọc đúng cây của dự án đó. Chưa chọn Dự án mà mở dropdown Vị trí cha thì Excel báo lỗi nguồn — cứ chọn Dự án trước là hết.',
+    'Dropdown LIÊN KẾT: chọn "Dự án" trước (danh sách hiện dạng "Tên (id)"), dropdown "Vị trí cha" cùng dòng tự lọc đúng cây của dự án đó. Chưa chọn Dự án mà mở dropdown Vị trí cha thì Excel báo lỗi nguồn — cứ chọn Dự án trước là hết.',
   ],
   [
     '11',
@@ -131,6 +114,14 @@ const GUIDE_ROWS: Array<[string, string]> = [
     'Hệ thống kiểm tra TOÀN BỘ file trước khi ghi. Có dòng nào sai thì không vị trí nào được tạo hay sửa.',
   ],
 ];
+
+/**
+ * Cột chỉ xuất hiện trong file XUẤT bản cũ: chấp nhận và bỏ qua khi nhập
+ * để file cũ vẫn nhập được (khớp theo tên, hoặc theo "Tên (id)").
+ */
+const IMPORT_IGNORED_HEADERS = new Set(
+  ['ID dự án', 'ID vị trí', 'ID vị trí cha'].map(normalizeText),
+);
 
 export interface LocationImportError {
   row: number;
@@ -184,11 +175,10 @@ interface ParsedRow {
   parentId: number | null;
   /** Id giá âm của chính dòng này (nếu được dòng sau làm cha). */
   syntheticId: number | null;
-  /** Có "ID vị trí" nghĩa là SỬA đúng bản ghi này, bỏ qua khớp tên. */
-  targetId: number | null;
+  /** Id bản ghi đã tồn tại khớp (dự án, cha, tên) — nhập lại sẽ cập nhật. */
+  existingId: number | null;
   name: string;
   code: string | null;
-  sortOrder: number | null;
 }
 
 @Injectable()
@@ -329,37 +319,45 @@ export class SiteLocationsExcelService {
       // Đường dẫn trong entries có kèm tên dự án ở đầu — bỏ đi vì cột Dự án
       // riêng đã chỉ rõ site, đồng thời bỏ đoạn cuối (lá) để còn đường dẫn cha.
       const segments = splitPath(sampleEntry.path).slice(1, -1);
-      sheet.getRow(3).getCell(colIndex('siteId')).value = sampleEntry.siteId;
-      sheet.getRow(3).getCell(colIndex('siteName')).value = site?.name ?? '';
-      sheet.getRow(3).getCell(colIndex('parentId')).value =
-        ref.locations.find((l) => l.id === sampleEntry.id)?.parentId ?? '';
-      sheet.getRow(3).getCell(colIndex('parentPath')).value =
-        segments.join(' > ');
+      const parent = ref.locations.find((l) => l.id === sampleEntry.id);
+      sheet.getRow(3).getCell(colIndex('siteName')).value = site
+        ? withIdSuffix(site.name, site.id)
+        : '';
+      sheet.getRow(3).getCell(colIndex('parentPath')).value = withIdSuffix(
+        segments.join(' > '),
+        parent?.parentId ?? null,
+      );
       sheet.getRow(3).getCell(colIndex('name')).value =
         'Vị trí mới (dòng mẫu)';
       sheet.getRow(3).getCell(colIndex('code')).value = 'MAU-MOI-01';
-      sheet.getRow(3).getCell(colIndex('sortOrder')).value = 1;
     }
 
-    // Dropdown dự án (cột tên B) cho MAX_TEMPLATE_ROWS dòng đầu.
+    // Dropdown dự án (cột tên A, dạng "Tên (id)") cho MAX_TEMPLATE_ROWS dòng đầu.
     const siteLast = ref.sites.length + 1;
     for (let row = 2; row <= MAX_TEMPLATE_ROWS; row += 1) {
       sheet.getRow(row).getCell(colIndex('siteName')).dataValidation = {
         type: 'list',
         allowBlank: false,
-        formulae: [`'${REF_SHEET}'!$B$2:$B$${siteLast}`],
+        formulae: [`'${REF_SHEET}'!$A$2:$A$${siteLast}`],
       };
     }
 
-    // Dropdown LIÊN KẾT: chọn Dự án (tên hoặc ID) trước, dropdown "Vị trí cha"
-    // cùng dòng tự lọc đúng cây của dự án đó.
-    const cascade = addCascadeLists(workbook, ref.sites, ref.locations);
+    // Dropdown LIÊN KẾT: chọn Dự án trước, dropdown "Vị trí cha" cùng dòng
+    // tự lọc đúng cây của dự án đó.
+    const cascade = addCascadeLists(workbook, ref.sites, ref.locations, {
+      siteLabel: (site) => withIdSuffix(site.name, site.id),
+    });
     if (cascade) {
       for (let row = 2; row <= MAX_TEMPLATE_ROWS; row += 1) {
         sheet.getRow(row).getCell(colIndex('parentPath')).dataValidation = {
           type: 'list',
           allowBlank: true,
-          formulae: [cascade.locationFormula('A', 'B', row)],
+          formulae: [
+            cascade.locationFormulaByName(
+              columnLetter(colIndex('siteName')),
+              row,
+            ),
+          ],
         };
       }
     }
@@ -376,47 +374,29 @@ export class SiteLocationsExcelService {
     return Buffer.from(buffer);
   }
 
-  /** Đường dẫn đầy đủ của 1 vị trí theo id (đi ngược lên gốc). */
-  private pathOf(lookup: Lookups, siteId: number, id: number): string {
-    const names: string[] = [];
-    let current = lookup.locationsById.get(id);
-    let guard = 0;
-    while (current && guard < 50) {
-      names.unshift(current.name);
-      current =
-        current.parentId == null
-          ? undefined
-          : lookup.locationsById.get(current.parentId);
-      guard += 1;
-    }
-    const siteName = lookup.sitesById.get(siteId)?.name;
-    if (siteName) names.unshift(siteName);
-    return names.join(' > ');
-  }
-
   private writeReferenceSheet(
     workbook: ExcelJS.Workbook,
     ref: ReferenceData,
   ) {
     const sheet = workbook.addWorksheet(REF_SHEET);
-    // Cặp ID + Tên để copy ID sang file nhập nhiều đợt.
-    const columns: Array<{ header: string; values: Array<string | number> }> =
+    // Mỗi giá trị đã ở dạng "Tên (id)" để copy nguyên sang file nhập.
+    const columns: Array<{ header: string; values: string[]; width: number }> =
       [
-        { header: 'ID dự án', values: ref.sites.map((s) => s.id) },
-        { header: 'Dự án', values: ref.sites.map((s) => s.name) },
         {
-          header: 'ID vị trí',
-          values: ref.locationEntries.map((e) => e.id),
+          header: 'Dự án',
+          values: ref.sites.map((s) => withIdSuffix(s.name, s.id)),
+          width: 34,
         },
         {
           header: 'Vị trí (đường dẫn đầy đủ)',
-          values: ref.locationEntries.map((e) => e.path),
+          values: ref.locationEntries.map((e) => withIdSuffix(e.path, e.id)),
+          width: 46,
         },
       ];
     sheet.columns = columns.map((col, index) => ({
       header: col.header,
       key: `c${index}`,
-      width: index % 2 === 0 ? 14 : 44,
+      width: col.width,
     }));
 
     const headerRow = sheet.getRow(1);
@@ -471,9 +451,10 @@ export class SiteLocationsExcelService {
   // ================= Xuất dữ liệu =================
 
   /**
-   * Xuất cây vị trí ra .xlsx (lọc theo dự án nếu có). File xuất dùng nguyên
-   * thứ tự cột của file nhập nên nhập lại được ngay — phục vụ nhập nhiều
-   * đợt: nhập vị trí cha đợt 1 → xuất → điền "ID vị trí cha" ở đợt 2.
+   * Xuất cây vị trí ra .xlsx 1 sheet (lọc theo dự án nếu có). File xuất dùng
+   * nguyên thứ tự cột của file nhập nên nhập lại được ngay — các cột tham
+   * chiếu đã ở dạng "Tên (id)". Phục vụ nhập nhiều đợt: nhập vị trí cha
+   * đợt 1 → xuất → dùng tiếp file xuất cho đợt 2.
    */
   async buildExport(siteId?: number): Promise<Buffer> {
     const ref = await this.loadReferenceData();
@@ -481,7 +462,7 @@ export class SiteLocationsExcelService {
       (e) => siteId === undefined || e.siteId === siteId,
     );
     const byId = new Map(ref.locations.map((l) => [l.id, l]));
-    const siteNameOf = new Map(ref.sites.map((s) => [s.id, s.name]));
+    const siteOf = new Map(ref.sites.map((s) => [s.id, s]));
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'EMD - Module Tài sản';
@@ -490,20 +471,13 @@ export class SiteLocationsExcelService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
 
-    const headers = [
-      'ID vị trí',
-      'Dự án',
-      'ID vị trí cha',
-      'Vị trí cha',
-      'Tên vị trí',
-      'Mã vị trí',
-      'Thứ tự',
+    const headers = ['Dự án', 'Vị trí cha', 'Tên vị trí', 'Mã vị trí'];
+    sheet.columns = [
+      { header: headers[0], key: 'c0', width: 30 },
+      { header: headers[1], key: 'c1', width: 40 },
+      { header: headers[2], key: 'c2', width: 34 },
+      { header: headers[3], key: 'c3', width: 20 },
     ];
-    sheet.columns = headers.map((header, index) => ({
-      header,
-      key: `c${index}`,
-      width: index === 3 || index === 4 ? 40 : 18,
-    }));
 
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -521,15 +495,16 @@ export class SiteLocationsExcelService {
 
     for (const entry of entries) {
       const row = byId.get(entry.id);
-      const segments = splitPath(entry.path);
+      const site = siteOf.get(entry.siteId);
+      // Đường dẫn cha: bỏ tên dự án ở đầu và đoạn lá ở cuối.
+      const parentSegments = splitPath(entry.path).slice(1, -1);
       sheet.addRow([
-        entry.id,
-        siteNameOf.get(entry.siteId) ?? '',
-        row?.parentId ?? '',
-        segments.slice(1, -1).join(' > '),
-        row?.name ?? segments[segments.length - 1] ?? '',
+        site ? withIdSuffix(site.name, site.id) : '',
+        row?.parentId == null
+          ? ''
+          : withIdSuffix(parentSegments.join(' > '), row.parentId),
+        row?.name ?? splitPath(entry.path).pop() ?? '',
         row?.code ?? '',
-        row?.sortOrder ?? '',
       ]);
     }
 
@@ -616,6 +591,7 @@ export class SiteLocationsExcelService {
       const text = cellText(cell);
       if (!text) return;
       const key = normalizeText(text);
+      if (IMPORT_IGNORED_HEADERS.has(key)) return;
       if (!known.has(key)) unknown.push(text);
       else if (!map.has(key)) map.set(key, colNumber);
     });
@@ -694,145 +670,99 @@ export class SiteLocationsExcelService {
       const name = text('name');
       if (!name) push('name', 'Tên vị trí là bắt buộc.');
 
-      // Dự án: ưu tiên "ID dự án", trống mới khớp "Dự án" theo tên.
+      // Dự án dạng "Tên (id)": có "(id)" thì lấy đúng dự án đó, BE chỉ dựa
+      // vào id. Không có "(id)" thì khớp theo tên.
       let siteId = -1;
-      const siteIdText = text('siteId');
-      const siteName = text('siteName');
-      if (siteIdText) {
-        const parsed = parseIdValue(siteIdText);
-        if (parsed.error) {
-          push('siteId', parsed.error);
-        } else {
-          const id = parsed.value as number;
-          const found = lookup.sitesById.get(id);
-          if (!found) {
-            push('siteId', `ID dự án #${id} không tồn tại.`);
-          } else {
-            if (
-              siteName &&
-              normalizeText(found.name) !== normalizeText(siteName)
-            ) {
-              push(
-                'siteName',
-                `Tên "${siteName}" không khớp dự án của ID dự án #${id} ("${found.name}").`,
-              );
-            } else {
-              siteId = id;
-            }
-          }
-        }
-      } else if (!siteName) {
+      const siteText = text('siteName');
+      if (!siteText) {
         push('siteName', 'Dự án là bắt buộc.');
       } else {
-        const siteIds = lookup.sites.get(normalizeText(siteName));
-        if (!siteIds) {
-          push(
-            'siteName',
-            `"${siteName}" không khớp dự án nào. Xem sheet "Danh mục" hoặc điền ID dự án.`,
-          );
-        } else if (siteIds.length > 1) {
-          push(
-            'siteName',
-            `"${siteName}" khớp nhiều dự án — điền ID dự án để xác định.`,
-          );
-        } else {
-          siteId = siteIds[0].id;
-        }
-      }
-
-      // "ID vị trí" có số nghĩa là SỬA đúng vị trí đó (không đổi cha qua file).
-      let targetId: number | null = null;
-      const locationIdText = text('locationId');
-      if (locationIdText) {
-        const parsed = parseIdValue(locationIdText);
-        if (parsed.error) {
-          push('locationId', parsed.error);
-        } else {
-          const id = parsed.value as number;
-          const found = lookup.locationsById.get(id);
+        const { name: siteName, id: siteIdHint } = splitNameId(siteText);
+        if (siteIdHint !== null) {
+          const found = lookup.sitesById.get(siteIdHint);
           if (!found) {
-            push('locationId', `ID vị trí #${id} không tồn tại.`);
-          } else if (siteId > 0 && found.siteId !== siteId) {
             push(
-              'locationId',
-              `ID vị trí #${id} không thuộc dự án đã chọn. Bỏ trống Dự án hoặc sửa lại ID.`,
+              'siteName',
+              `"${siteText}" có (id) #${siteIdHint} không tồn tại. Xem sheet "Danh mục" để copy đúng.`,
             );
           } else {
-            targetId = id;
-            siteId = found.siteId;
+            siteId = siteIdHint;
+          }
+        } else {
+          const siteIds = lookup.sites.get(normalizeText(siteName));
+          if (!siteIds) {
+            push(
+              'siteName',
+              `"${siteName}" không khớp dự án nào. Xem sheet "Danh mục" để chọn đúng.`,
+            );
+          } else if (siteIds.length > 1) {
+            push(
+              'siteName',
+              `"${siteName}" khớp nhiều dự án — thêm (id) vào sau tên, ví dụ "${siteName} (${siteIds[0].id})".`,
+            );
+          } else {
+            siteId = siteIds[0].id;
           }
         }
       }
 
-      const sortOrder = parseIntValue(text('sortOrder'));
-      if (sortOrder.error) push('sortOrder', sortOrder.error);
-
-      // Cha: ưu tiên "ID vị trí cha", trống mới dùng đường dẫn "Vị trí cha".
-      // Chế độ sửa (có ID vị trí): cha giải ra phải trùng cha hiện tại,
-      // muốn đổi cha thì sửa trực tiếp trên giao diện.
+      // Cha dạng "đường dẫn (id)": có "(id)" thì lấy đúng vị trí đó, BE chỉ
+      // dựa vào id. Không có "(id)" thì đi theo đường dẫn; cha mới tạo ở
+      // dòng trên của cùng file thì phải để đường dẫn thuần (chưa có id).
       let parentId: number | null = null;
       let syntheticId: number | null = null;
       if (siteId > 0) {
-        const parentIdText = text('parentId');
-        const parentPath = text('parentPath');
-        if (parentIdText) {
-          const parsed = parseIdValue(parentIdText);
-          if (parsed.error) {
-            push('parentId', parsed.error);
-          } else {
-            const id = parsed.value as number;
-            const found = lookup.locationsById.get(id);
+        const parentText = text('parentPath');
+        if (parentText) {
+          const { name: parentPath, id: parentIdHint } =
+            splitNameId(parentText);
+          if (parentIdHint !== null) {
+            const found = lookup.locationsById.get(parentIdHint);
             if (!found) {
-              push('parentId', `ID vị trí cha #${id} không tồn tại.`);
-            } else if (found.siteId !== siteId) {
-              push('parentId', `ID vị trí cha #${id} không thuộc dự án này.`);
-            } else if (
-              parentPath &&
-              normalizeText(parentPath) !==
-                normalizeText(this.pathOf(lookup, siteId, id))
-            ) {
               push(
                 'parentPath',
-                `Đường dẫn không khớp vị trí của ID vị trí cha #${id} ("${this.pathOf(lookup, siteId, id)}").`,
+                `"${parentText}" có (id) #${parentIdHint} không tồn tại. Xem sheet "Danh mục" để copy đúng.`,
+              );
+            } else if (found.siteId !== siteId) {
+              push(
+                'parentPath',
+                `Vị trí cha (#${parentIdHint}) không thuộc dự án này.`,
               );
             } else {
-              parentId = id;
+              parentId = parentIdHint;
             }
+          } else {
+            const segments = splitPath(parentPath);
+            if (
+              segments.length > 1 &&
+              normalizeText(segments[0]) ===
+                normalizeText(lookup.sitesById.get(siteId)?.name ?? '')
+            ) {
+              segments.shift();
+            }
+            parentId = this.resolveParent(
+              siteId,
+              segments,
+              lookup,
+              syntheticByKey,
+              (message) => push('parentPath', message),
+            );
           }
-        } else if (parentPath) {
-          const segments = splitPath(parentPath);
-          if (
-            segments.length > 1 &&
-            normalizeText(segments[0]) === normalizeText(
-              lookup.sitesById.get(siteId)?.name ?? '',
-            )
-          ) {
-            segments.shift();
-          }
-          parentId = this.resolveParent(
-            siteId,
-            segments,
-            lookup,
-            syntheticByKey,
-            (message) => push('parentPath', message),
-          );
         }
-        if (targetId !== null) {
-          const current = lookup.locationsById.get(targetId);
-          if (current && (parentIdText || parentPath)) {
-            if ((parentId ?? null) !== current.parentId) {
-              push(
-                'parentId',
-                'Muốn đổi vị trí cha thì sửa trực tiếp trên giao diện, không đổi qua file import.',
-              );
-            }
-          }
-          if (current) parentId = current.parentId;
-        } else if (rowErrors.length === 0) {
-          // Cấp id giả cho dòng này ngay khi biết site + cha, để dòng dưới
-          // tham chiếu tới được (kể cả khi tên bị trùng và dòng bị loại).
+        if (rowErrors.length === 0) {
+          // Cấp id giả cho dòng này để dòng dưới tham chiếu tới được
+          // (kể cả khi tên bị trùng và dòng bị loại).
           syntheticId = -(syntheticCounter += 1);
         }
+      }
+
+      // Dòng khớp (dự án, cha, tên) với bản ghi đã có sẽ được cập nhật thay
+      // vì tạo mới — mã của chính bản ghi đó không tính là trùng.
+      let existingId: number | null = null;
+      if (siteId > 0 && parentId !== null && parentId >= 0 && name) {
+        existingId =
+          lookup.byKey.get(this.locationKey(siteId, parentId, name))?.id ??
+          null;
       }
 
       const code = text('code') || null;
@@ -842,7 +772,7 @@ export class SiteLocationsExcelService {
           push('code', `Mã "${code}" đã dùng ở dòng ${stagedRow}.`);
         } else {
           const owner = lookup.codeOwner.get(code);
-          if (owner !== undefined && owner !== targetId) {
+          if (owner !== undefined && owner !== existingId) {
             push('code', `Mã "${code}" đã dùng cho vị trí #${owner}.`);
           }
         }
@@ -854,20 +784,13 @@ export class SiteLocationsExcelService {
       }
 
       // Chặn 2 dòng trong cùng file trỏ tới cùng 1 vị trí.
-      const key =
-        targetId !== null
-          ? `id:${targetId}`
-          : this.locationKey(siteId, parentId, name);
+      const key = this.locationKey(siteId, parentId, name);
       const duplicate = stagedByKey.get(key);
       if (duplicate) {
         errors.push({
           row: rowNumber,
-          column:
-            targetId !== null ? 'ID vị trí' : 'Tên vị trí',
-          message:
-            targetId !== null
-              ? `ID vị trí #${targetId} đã nhập ở dòng ${duplicate.row}.`
-              : `Trùng với dòng ${duplicate.row} (cùng dự án và cùng vị trí cha).`,
+          column: 'Tên vị trí',
+          message: `Trùng với dòng ${duplicate.row} (cùng dự án và cùng vị trí cha).`,
         });
         continue;
       }
@@ -877,10 +800,9 @@ export class SiteLocationsExcelService {
         siteId,
         parentId,
         syntheticId,
-        targetId,
+        existingId,
         name,
         code,
-        sortOrder: sortOrder.value ?? null,
       };
       rows.push(parsed);
       stagedByKey.set(key, parsed);
@@ -928,9 +850,8 @@ export class SiteLocationsExcelService {
         return null;
       }
       if (fromDb.length > 1) {
-        const codes = fromDb.map((item) => item.code ?? `#${item.id}`);
         fail(
-          `"${segment}" trùng tên (${codes.join(', ')}). Ghi đầy đủ đường dẫn cha.`,
+          `"${segment}" trùng tên — copy nguyên chuỗi "đường dẫn (id)" từ sheet "Danh mục".`,
         );
         return null;
       }
@@ -959,7 +880,7 @@ export class SiteLocationsExcelService {
         const conflicts = taken.filter(
           (item) =>
             !rows.some(
-              (row) => row.code === item.code && row.targetId === item.id,
+              (row) => row.code === item.code && row.existingId === item.id,
             ),
         );
         if (conflicts.length > 0) {
@@ -984,23 +905,6 @@ export class SiteLocationsExcelService {
       const realIdOfSynthetic = new Map<number, number>();
 
       for (const row of rows) {
-        // Chế độ sửa: cập nhật thẳng bản ghi theo ID, chỉ đổi tên/mã/thứ tự.
-        if (row.targetId !== null) {
-          await tx.siteLocation.update({
-            where: { id: row.targetId },
-            data: {
-              name: row.name,
-              code: row.code,
-              ...(row.sortOrder !== null ? { sortOrder: row.sortOrder } : {}),
-            },
-          });
-          updated.push(row.targetId);
-          if (row.syntheticId !== null) {
-            realIdOfSynthetic.set(row.syntheticId, row.targetId);
-          }
-          continue;
-        }
-
         const parentId =
           row.parentId !== null && row.parentId < 0
             ? realIdOfSynthetic.get(row.parentId)
@@ -1033,7 +937,6 @@ export class SiteLocationsExcelService {
               isDeleted: false,
               // Ô "Mã vị trí" để trống nghĩa là xoá mã cũ.
               code: row.code,
-              ...(row.sortOrder !== null ? { sortOrder: row.sortOrder } : {}),
             },
           });
           updated.push(existing.id);
@@ -1049,7 +952,6 @@ export class SiteLocationsExcelService {
             name: row.name,
             code: row.code,
             parentId: parentId ?? null,
-            sortOrder: row.sortOrder ?? rows.length,
           },
           select: { id: true },
         });

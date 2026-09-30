@@ -77,7 +77,7 @@ export class AssetsController {
     return this.assetsExcelService.importFromFile(file);
   }
 
-  // Xuất đúng tập đang lọc — file xuất nhập lại được ngay (kèm ID + mã TS).
+  // Xuất đúng tập đang lọc — file xuất nhập lại được ngay (dạng Tên (id) + mã TS).
   @RequirePermissions('ADMIN')
   @Get('export')
   async downloadExport(

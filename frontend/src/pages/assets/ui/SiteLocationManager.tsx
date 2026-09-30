@@ -13,7 +13,6 @@ import {
   Button,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -43,7 +42,6 @@ interface LocationFormValues {
   name: string;
   code?: string;
   parentId?: number;
-  sortOrder?: number;
 }
 
 export interface SiteLocationManagerProps {
@@ -77,9 +75,7 @@ export function SiteLocationManager({ description }: SiteLocationManagerProps) {
     form.resetFields();
     // Thêm vị trí con: mặc định cha là vị trí đang chọn
     form.setFieldsValue(
-      parent
-        ? { parentId: parent.id, sortOrder: 0 }
-        : { parentId: undefined, sortOrder: rows.length },
+      parent ? { parentId: parent.id } : { parentId: undefined },
     );
     setOpen(true);
   }
@@ -91,7 +87,6 @@ export function SiteLocationManager({ description }: SiteLocationManagerProps) {
       name: row.name,
       code: row.code ?? undefined,
       parentId: row.parentId ?? undefined,
-      sortOrder: row.sortOrder,
     });
     setOpen(true);
   }
@@ -109,7 +104,6 @@ export function SiteLocationManager({ description }: SiteLocationManagerProps) {
       name: values.name.trim(),
       code: values.code?.trim() || undefined,
       parentId: values.parentId ?? undefined,
-      sortOrder: values.sortOrder ?? 0,
     };
     try {
       if (editing) {
@@ -172,13 +166,6 @@ export function SiteLocationManager({ description }: SiteLocationManagerProps) {
       width: 90,
       align: 'right',
       render: (d: number) => <Tag style={{ borderRadius: 3 }}>Cấp {d + 1}</Tag>,
-    },
-    {
-      title: 'Thứ tự',
-      dataIndex: 'sortOrder',
-      key: 'sortOrder',
-      width: 90,
-      align: 'right',
     },
     {
       title: 'Thao tác',
@@ -327,9 +314,6 @@ export function SiteLocationManager({ description }: SiteLocationManagerProps) {
               optionFilterProp="label"
               options={parentOptions}
             />
-          </Form.Item>
-          <Form.Item label="Thứ tự" name="sortOrder">
-            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>

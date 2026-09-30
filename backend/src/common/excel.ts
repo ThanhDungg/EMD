@@ -137,6 +137,32 @@ export function parseIdValue(raw: string): {
   return { value: Number(text) };
 }
 
+/**
+ * Ô tham chiếu dạng "Tên (id)" — ví dụ "Phòng kế toán (12)".
+ * Chỉ nhận "(số)" ở CUỐI chuỗi; tên có ngoặc khác (VD "Máy bơm (2HP)")
+ * vẫn là tên thuần. Trả `id: null` khi không có hậu tố.
+ */
+const NAME_ID_SUFFIX = /^(.*?)\s*\(\s*(\d+)\s*\)\s*$/;
+
+export function splitNameId(value: string): {
+  name: string;
+  id: number | null;
+} {
+  const text = value.trim();
+  const matched = NAME_ID_SUFFIX.exec(text);
+  if (!matched) return { name: text, id: null };
+  return { name: matched[1].trim(), id: Number(matched[2]) };
+}
+
+/** Ghép "Tên (id)" để xuất file / gợi ý dropdown. Chưa có id thì giữ tên. */
+export function withIdSuffix(
+  name: string,
+  id: number | null | undefined,
+): string {
+  if (id == null) return name;
+  return `${name} (${id})`;
+}
+
 /** 1 -> A, 2 -> B, 27 -> AA (dùng cho data validation trỏ tới sheet khác). */
 export function columnLetter(index: number): string {
   let letter = '';
@@ -197,6 +223,11 @@ export interface CascadeLists {
    * Người dùng điền 1 trong 2 cột là dropdown vị trí lọc đúng.
    */
   locationFormula: (idCol: string, nameCol: string, row: number) => string;
+  /**
+   * Công thức dropdown cho ô vị trí ở `row`, chỉ lọc theo cột TÊN dự án
+   * (dùng khi file không còn cột "ID dự án").
+   */
+  locationFormulaByName: (nameCol: string, row: number) => string;
   /** Công thức dropdown cho cột "Dự án" (tên). */
   siteNameFormula: string;
 }
@@ -214,8 +245,14 @@ export function addCascadeLists(
   workbook: Workbook,
   sites: CascadeSite[],
   locations: CascadeLocation[],
+  options?: {
+    /** Chuỗi hiện trong dropdown "Dự án" — mặc định tên thuần. */
+    siteLabel?: (site: CascadeSite) => string;
+  },
 ): CascadeLists | null {
   if (sites.length === 0) return null;
+
+  const label = options?.siteLabel ?? ((site) => site.name);
 
   const sheet = workbook.addWorksheet('_lists');
   sheet.state = 'hidden';
@@ -245,7 +282,7 @@ export function addCascadeLists(
   sites.forEach((site, index) => {
     const col = columnLetter(index + 1);
     sheet.getCell(`${col}1`).value = site.id;
-    sheet.getCell(`${col}2`).value = site.name;
+    sheet.getCell(`${col}2`).value = label(site);
     const paths = pathsOf(site.id);
     paths.forEach((path, rowIndex) => {
       sheet.getCell(`${col}${rowIndex + 3}`).value = path;
@@ -271,5 +308,7 @@ export function addCascadeLists(
     siteNameFormula: 'SITE_NAMES',
     locationFormula: (idCol: string, nameCol: string, row: number) =>
       `INDIRECT("LOC_"&IF($${idCol}${row}<>"",MATCH($${idCol}${row},SITE_IDS,0),MATCH($${nameCol}${row},SITE_NAMES,0)))`,
+    locationFormulaByName: (nameCol: string, row: number) =>
+      `INDIRECT("LOC_"&MATCH($${nameCol}${row},SITE_NAMES,0))`,
   };
 }

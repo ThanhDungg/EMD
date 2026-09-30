@@ -140,7 +140,6 @@ export class SiteLocationsService {
         name: dto.name,
         code: dto.code,
         parentId: dto.parentId,
-        sortOrder: dto.sortOrder ?? 0,
       },
     });
   }

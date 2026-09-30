@@ -1,6 +1,7 @@
 // entities/site — hồ sơ dự án (site) + 5 bảng con theo dự án.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/shared/api';
+import { apiClient, fetchBlob } from '@/shared/api';
+import { parseImportError } from '@/entities/asset';
 import { getToken } from '@/shared/auth';
 
 function token(): string | undefined {
@@ -132,6 +133,42 @@ export async function createSite(payload: SitePayload): Promise<SiteProfile> {
 
 export async function deleteSite(id: number): Promise<unknown> {
   return apiClient.remove(`/workflow/sites/${id}`, token());
+}
+
+// ---------------- Nhập dự án bằng Excel ----------------
+
+/** Kết quả nhập: dòng có mã trùng dự án đã có thì cập nhật. */
+export interface SiteImportResult {
+  total: number;
+  created: number;
+  updated: number;
+}
+
+/** Nhập dự án từ file .xlsx theo mẫu. Ném lỗi bóc sẵn để hiện bảng lỗi. */
+export async function importSitesFromFile(
+  file: File,
+): Promise<SiteImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    return await apiClient.upload<SiteImportResult>(
+      '/workflow/sites/import',
+      form,
+      token(),
+    );
+  } catch (error) {
+    throw parseImportError(error);
+  }
+}
+
+/** Tải file mẫu .xlsx cho dự án (có sheet danh mục + hướng dẫn). */
+export async function downloadSiteImportTemplate(): Promise<Blob> {
+  return fetchBlob('/workflow/sites/import/template', token());
+}
+
+/** Xuất toàn bộ dự án ra .xlsx (nhập lại được ngay). */
+export async function downloadSiteExport(): Promise<Blob> {
+  return fetchBlob('/workflow/sites/export', token());
 }
 
 // ---------------- 5 bảng con theo dự án ----------------
@@ -288,6 +325,15 @@ export function useDeleteSite() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteSite(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: siteKeys.all }),
+  });
+}
+
+export function useImportSites() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => importSitesFromFile(file),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: siteKeys.all }),
   });

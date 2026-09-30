@@ -102,8 +102,9 @@ export async function deleteAsset(id: number): Promise<unknown> {
 /**
  * Backend trả 400 kèm danh sách lỗi từng dòng khi file sai. `apiClient`
  * ném Error dạng `API 400: {...}` nên phải bóc lại body để hiện bảng lỗi.
+ * Dùng chung cho mọi modal nhập Excel (tài sản, vị trí, dự án...).
  */
-function parseImportError(error: unknown): AssetImportFailure {
+export function parseImportError(error: unknown): AssetImportFailure {
   const raw = error instanceof Error ? error.message : String(error);
   const match = raw.match(/^API \d+: ([\s\S]*)$/);
   const body = match?.[1] ? safeParse(match[1]) : undefined;

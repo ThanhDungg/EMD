@@ -116,7 +116,6 @@ export interface SiteLocationPayload {
   name: string;
   code?: string;
   parentId?: number | null;
-  sortOrder?: number;
 }
 
 /** Dàn cây vị trí thành list phẳng (giữ thứ tự cha → con) + độ sâu. */

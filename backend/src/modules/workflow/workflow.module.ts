@@ -45,6 +45,7 @@ import { SiteLocationsController } from './site-locations.controller.js';
 import { SiteLocationsExcelService } from './site-locations-excel.service.js';
 import { SiteLocationsService } from './site-locations.service.js';
 import { SitesController } from './sites.controller.js';
+import { SitesExcelService } from './sites-excel.service.js';
 import { SitesService } from './sites.service.js';
 import { WorkflowCategoriesController } from './workflow-categories.controller.js';
 import { WorkflowCategoriesService } from './workflow-categories.service.js';
@@ -103,6 +104,7 @@ import { WorksService } from './works.service.js';
     MasterplanCategoriesService,
     MasterplanTasksService,
     SitesService,
+    SitesExcelService,
     SiteLocationsService,
     SiteLocationsExcelService,
     AssetsService,

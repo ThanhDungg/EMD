@@ -26,7 +26,7 @@ export function AssetImportModal({ open, onClose }: Props) {
       accept={ASSET_IMPORT_ACCEPT}
       maxSize={ASSET_IMPORT_MAX_SIZE}
       infoMessage="Mã tài sản không cần nhập — hệ thống tự sinh TS-0001, TS-0002..."
-      infoDescription="Mỗi cột tên có 1 cột ID đi kèm: điền ID thì lấy đúng bản ghi đó, để trống mới khớp theo tên. Nhập nhiều đợt: nhập đợt 1 rồi bấm Xuất Excel để lấy ID cho đợt 2."
+      infoDescription="Các cột tham chiếu nhập dạng “Tên (id)” — copy nguyên chuỗi từ sheet Danh mục hoặc file Xuất. Nhập nhiều đợt: nhập đợt 1 rồi bấm Xuất Excel để lấy “Tên (id)” cho đợt 2."
       loadTemplate={downloadAssetImportTemplate}
       onImport={(file) => importMutation.mutateAsync(file)}
       renderSuccess={(result) =>

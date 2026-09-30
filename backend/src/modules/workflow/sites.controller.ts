@@ -8,19 +8,62 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import { CreateSiteDto } from './dto/create-site.dto.js';
 import { UpdateSiteDto } from './dto/update-site.dto.js';
+import { SitesExcelService } from './sites-excel.service.js';
 import { SitesService } from './sites.service.js';
+
+const XLSX_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @Controller('workflow/sites')
 export class SitesController {
-  constructor(private readonly sitesService: SitesService) {}
+  constructor(
+    private readonly sitesService: SitesService,
+    private readonly sitesExcelService: SitesExcelService,
+  ) {}
 
   @Get()
   findAll(@Query('includeDeleted') includeDeleted?: string) {
     return this.sitesService.findAll(includeDeleted === 'true');
+  }
+
+  // Các route import/export phải khai báo TRƯỚC `@Get(':id')`, nếu không Nest
+  // sẽ hiểu "import" và "export" là tham số :id.
+  @RequirePermissions('ADMIN')
+  @Get('import/template')
+  async downloadTemplate() {
+    const buffer = await this.sitesExcelService.buildTemplate();
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: 'attachment; filename="mau-nhap-du-an.xlsx"',
+    });
+  }
+
+  @RequirePermissions('ADMIN')
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
+  importFromExcel(@UploadedFile() file?: Express.Multer.File) {
+    return this.sitesExcelService.importFromFile(file);
+  }
+
+  // Xuất toàn bộ dự án — file xuất nhập lại được ngay (kèm mã + Tên (id)).
+  @RequirePermissions('ADMIN')
+  @Get('export')
+  async downloadExport(@Query('includeDeleted') includeDeleted?: string) {
+    const buffer = await this.sitesExcelService.buildExport(
+      includeDeleted === 'true',
+    );
+    return new StreamableFile(buffer, {
+      type: XLSX_MIME,
+      disposition: 'attachment; filename="danh-sach-du-an.xlsx"',
+    });
   }
 
   @Get(':id')

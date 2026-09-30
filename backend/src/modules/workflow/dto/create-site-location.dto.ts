@@ -20,9 +20,4 @@ export class CreateSiteLocationDto {
   @Type(() => Number)
   @IsInt()
   parentId?: number | null;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  sortOrder?: number;
 }

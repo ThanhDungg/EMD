@@ -1,6 +1,10 @@
 // pages/app/ui/ProjectPage — module Ứng dụng: danh sách dự án (có phân trang).
 // Bấm vào 1 dự án → mở trang chi tiết /app/projects/:projectId.
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  CloudUploadOutlined,
+  DownloadOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import { Button, Popconfirm, Space, Tag, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,14 +12,16 @@ import {
   SITE_MANAGEMENT_STATUS_LABEL,
   SITE_OPERATION_STATUS_LABEL,
   SITE_RENTAL_STATUS_LABEL,
+  downloadSiteExport,
   useDeleteSite,
   useSiteProfiles,
 } from '@/entities/site';
 import type { SiteProfile } from '@/entities/site';
-import { apiErrorMessage } from '@/shared/lib';
+import { apiErrorMessage, downloadBlob } from '@/shared/lib';
 import { BodyCard, EllipsisText, Table } from '@/shared/ui';
 import type { ColumnsType } from '@/shared/ui';
 import { CreateProjectModal } from './CreateProjectModal';
+import { SiteImportModal } from './SiteImportModal';
 
 const { Text } = Typography;
 const PAGE_SIZE = 20;
@@ -24,6 +30,8 @@ export function ProjectPage() {
   const navigate = useNavigate();
   const [messageApi, contextHolder] = message.useMessage();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data: sites = [], isLoading } = useSiteProfiles();
   const deleteMutation = useDeleteSite();
@@ -128,14 +136,41 @@ export function ProjectPage() {
       <BodyCard
         title="Danh sách dự án"
         extra={
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Thêm dự án
-          </Button>
+          <Space>
+            <Button
+              size="small"
+              icon={<CloudUploadOutlined />}
+              onClick={() => setImportOpen(true)}
+            >
+              Nhập từ Excel
+            </Button>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              loading={exporting}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  const blob = await downloadSiteExport();
+                  downloadBlob(blob, 'danh-sach-du-an.xlsx');
+                } catch (err) {
+                  messageApi.error(apiErrorMessage(err, 'Xuất Excel thất bại.'));
+                } finally {
+                  setExporting(false);
+                }
+              }}
+            >
+              Xuất Excel
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Thêm dự án
+            </Button>
+          </Space>
         }
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
@@ -171,6 +206,8 @@ export function ProjectPage() {
           navigate(`/app/projects/${created.id}`);
         }}
       />
+
+      <SiteImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </>
   );
 }

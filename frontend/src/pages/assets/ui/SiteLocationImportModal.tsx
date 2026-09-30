@@ -27,7 +27,7 @@ export function SiteLocationImportModal({ open, onClose }: Props) {
       accept={ASSET_IMPORT_ACCEPT}
       maxSize={ASSET_IMPORT_MAX_SIZE}
       infoMessage="Vị trí đã có (cùng dự án + cùng vị trí cha + cùng tên) sẽ được cập nhật, không tạo bản ghi trùng."
-      infoDescription="Điền ID vị trí cha thì lấy đúng vị trí đó, để trống mới khớp theo đường dẫn. Nhập nhiều đợt: nhập cha đợt 1 rồi bấm Xuất Excel để lấy ID cho đợt 2."
+      infoDescription="Cột Vị trí cha nhập dạng “đường dẫn (id)” — copy nguyên chuỗi từ sheet Danh mục hoặc file Xuất. Nhập nhiều đợt: nhập cha đợt 1 rồi bấm Xuất Excel để lấy “Tên (id)” cho đợt 2."
       loadTemplate={downloadLocationImportTemplate}
       onImport={(file) => importMutation.mutateAsync(file)}
       renderSuccess={(result) =>

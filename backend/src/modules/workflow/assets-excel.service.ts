@@ -9,8 +9,10 @@ import {
   formatDateVi,
   normalizeText,
   parseDateValue,
-  parseIdValue,
   parseQuantityValue,
+  splitNameId,
+  splitPath,
+  withIdSuffix,
 } from '../../common/excel.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AssetFilters } from './assets.service.js';
@@ -21,8 +23,11 @@ import { AssetsService } from './assets.service.js';
 // Nguyên tắc:
 // - Mã tài sản KHÔNG có trong file, do hệ thống tự sinh (TS-0001, TS-0002...)
 //   để không bao giờ trùng `assets.code` (unique, kể cả bản ghi đã xoá mềm).
-// - Các cột tham chiếu nhập theo TÊN tiếng Việt, khớp không phân biệt hoa thường
-//   và dấu tiếng Việt. Sai tên thì báo đúng dòng/cột và KHÔNG gì cũng được ghi.
+// - Không có cột ID rời. Các cột tham chiếu nhập theo dạng "Tên (id)" — ví dụ
+//   "Phòng kế toán (12)"; BE bóc id trong ngoặc để lấy đúng bản ghi.
+// - Chỉ gõ tên (không có "(id)") vẫn được: khớp không phân biệt hoa thường
+//   và dấu tiếng Việt. Sai tên hoặc trùng tên thì báo đúng dòng/cột và KHÔNG
+//   gì cũng được ghi.
 // - Validate toàn bộ file trước, chỉ khi sạch lỗi mới ghi trong một transaction.
 
 const MAX_IMPORT_ROWS = 2000;
@@ -42,18 +47,12 @@ type RefColumn = 'category' | 'unit' | 'usageStatus' | 'condition';
 
 type ColumnKey =
   | 'name'
-  | 'siteId'
   | 'siteName'
-  | 'locationId'
   | 'locationPath'
-  | 'categoryId'
   | 'categoryName'
-  | 'usageStatusId'
   | 'usageStatusName'
-  | 'conditionId'
   | 'conditionName'
   | 'quantity'
-  | 'unitId'
   | 'unitName'
   | 'usageDate'
   | 'warrantyEnd'
@@ -83,78 +82,48 @@ const COLUMNS: ColumnDef[] = [
     required: true,
     example: 'Điều hoà 2 chiều 18000BTU',
   },
-  // Cặp ID + Tên: khi cột ID có số thì lấy đúng bản ghi đó, không cần khớp
-  // tên. Cột ID để trống thì quay sang nhập/khớp theo tên như cũ.
-  {
-    key: 'siteId',
-    header: 'ID dự án',
-    width: 12,
-  },
+  // Cột tham chiếu chỉ nhập text dạng "Tên (id)" — ví dụ "Phòng kế toán (12)".
+  // Có "(id)" thì lấy đúng bản ghi đó; không có thì khớp theo tên.
   {
     key: 'siteName',
     header: 'Dự án',
     width: 26,
-    example: 'Tòa A - Khu văn phòng',
-  },
-  {
-    key: 'locationId',
-    header: 'ID vị trí',
-    width: 12,
+    example: 'Tòa A - Khu văn phòng (1)',
   },
   {
     key: 'locationPath',
     header: 'Vị trí',
     width: 44,
-    example: 'Tầng 1 > Hành chính > Phòng kế toán',
-  },
-  {
-    key: 'categoryId',
-    header: 'ID danh mục TS',
-    width: 14,
+    example: 'Tầng 1 > Hành chính > Phòng kế toán (12)',
   },
   {
     key: 'categoryName',
     header: 'Danh mục tài sản',
     width: 28,
     refColumn: 'category',
-    example: 'Điều hoà / TĐH',
-  },
-  {
-    key: 'usageStatusId',
-    header: 'ID trạng thái',
-    width: 14,
+    example: 'Điều hoà / TĐH (3)',
   },
   {
     key: 'usageStatusName',
     header: 'Trạng thái sử dụng',
     width: 20,
     refColumn: 'usageStatus',
-    example: 'Đang sử dụng',
-  },
-  {
-    key: 'conditionId',
-    header: 'ID tình trạng',
-    width: 14,
+    example: 'Đang sử dụng (1)',
   },
   {
     key: 'conditionName',
     header: 'Tình trạng',
     width: 22,
     refColumn: 'condition',
-    example: 'Tốt',
+    example: 'Tốt (1)',
   },
   { key: 'quantity', header: 'Số lượng', width: 12, example: '2' },
-  {
-    key: 'unitId',
-    header: 'ID đơn vị tính',
-    width: 16,
-  },
   {
     key: 'unitName',
     header: 'Đơn vị tính',
     width: 14,
     refColumn: 'unit',
-    example: 'Cái',
+    example: 'Cái (1)',
   },
   {
     key: 'usageDate',
@@ -185,13 +154,13 @@ const COLUMNS: ColumnDef[] = [
   },
 ];
 
-/** Danh sách gợi ý nằm ở cột nào của sheet 'Danh mục' (cột TÊN, 1 = A).
- *  Sheet Danh mục xếp cặp ID + Tên nên cột tên nằm ở B/D/F/H. */
+/** Danh sách gợi ý nằm ở cột nào của sheet 'Danh mục' (cột TÊN kèm id).
+ *  Sheet Danh mục xếp mỗi danh mục 1 cột nên cột tên nằm ở A/B/C/D. */
 const REF_COLUMN_INDEX: Record<RefColumn, number> = {
-  category: 2,
-  unit: 4,
-  usageStatus: 6,
-  condition: 8,
+  category: 1,
+  unit: 2,
+  usageStatus: 3,
+  condition: 4,
 };
 
 /** Tra cột theo key thay vì chỉ số mảng — tránh lệch khi thêm/bớt cột. */
@@ -202,8 +171,20 @@ const COLUMN_BY_KEY = Object.fromEntries(
 /**
  * Cột chỉ xuất hiện trong file XUẤT (không có trong file mẫu): chấp nhận và
  * bỏ qua khi nhập — mã tài sản luôn tự sinh nên không bao giờ lấy từ file.
+ * Các cột "ID ..." của file xuất bản cũ cũng được bỏ qua để file cũ vẫn
+ * nhập được (khớp theo tên, hoặc theo "Tên (id)" nếu tên đã kèm id).
  */
-const IMPORT_IGNORED_HEADERS = new Set([normalizeText('Mã tài sản')]);
+const IMPORT_IGNORED_HEADERS = new Set(
+  [
+    'Mã tài sản',
+    'ID dự án',
+    'ID vị trí',
+    'ID danh mục TS',
+    'ID trạng thái',
+    'ID tình trạng',
+    'ID đơn vị tính',
+  ].map(normalizeText),
+);
 
 const GUIDE_ROWS: Array<[string, string]> = [
   ['Cách dùng', ''],
@@ -222,15 +203,15 @@ const GUIDE_ROWS: Array<[string, string]> = [
   ],
   [
     '5',
-    'Mỗi cột ID đi kèm 1 cột tên (ID dự án + Dự án, ID vị trí + Vị trí...). Khi cột ID có số thì hệ thống lấy đúng bản ghi đó — không cần khớp tên, tránh nhầm khi trùng tên.',
+    'Các cột tham chiếu (Dự án, Vị trí, Danh mục...) nhập theo dạng "Tên (id)" — ví dụ "Phòng kế toán (12)". Phần (id) trong ngoặc giúp lấy đúng bản ghi, tránh nhầm khi trùng tên.',
   ],
   [
     '6',
-    'Cột ID để trống thì nhập/khớp theo tên như cũ: không phân biệt hoa thường và dấu tiếng Việt. Chọn từ dropdown để tránh sai.',
+    'Chỉ gõ tên (không có "(id)") vẫn được: khớp không phân biệt hoa thường và dấu tiếng Việt. Nếu tên bị trùng, hệ thống báo lỗi và gợi ý (id) — xem sheet "Danh mục" để copy đúng chuỗi "Tên (id)". Chọn từ dropdown để tránh sai.',
   ],
   [
     '7',
-    'Muốn nhập nhiều đợt: nhập đợt 1 (theo tên), bấm "Xuất Excel" để lấy ID thật, điền ID vào đợt 2.',
+    'Muốn nhập nhiều đợt: nhập đợt 1, bấm "Xuất Excel" để lấy file đã có sẵn "Tên (id)", dùng tiếp cho đợt 2.',
   ],
   [
     '8',
@@ -238,11 +219,11 @@ const GUIDE_ROWS: Array<[string, string]> = [
   ],
   [
     '9',
-    'Cột "Vị trí" ghi đường dẫn từ dự án tới vị trí, phân tách bằng dấu ">" hoặc "/". Có "ID vị trí" thì không cần Dự án và Vị trí.',
+    'Cột "Vị trí" ghi đường dẫn từ dự án tới vị trí, phân tách bằng dấu ">" hoặc "/", ví dụ "Tầng 1 > Phòng kế toán (12)". Có "(id)" thì không cần điền cột "Dự án".',
   ],
   [
     '10',
-    'Dropdown LIÊN KẾT: chọn "Dự án" (tên hoặc ID) trước, dropdown "Vị trí" cùng dòng tự lọc đúng cây của dự án đó. Chưa chọn Dự án mà mở dropdown Vị trí thì Excel báo lỗi nguồn — cứ chọn Dự án trước là hết.',
+    'Dropdown LIÊN KẾT: chọn "Dự án" trước (danh sách hiện dạng "Tên (id)"), dropdown "Vị trí" cùng dòng tự lọc đúng cây của dự án đó. Chưa chọn Dự án mà mở dropdown Vị trí thì Excel báo lỗi nguồn — cứ chọn Dự án trước là hết.',
   ],
   [
     '11',
@@ -302,7 +283,7 @@ interface ReferenceLookups {
   sites: Map<string, number[]>;
   /** key = `${siteId}:${parentId ?? 0}` -> danh sách vị trí con. */
   locationChildren: Map<string, LocationRef[]>;
-  // Tra cứu theo ID — cột "ID ..." trong file được ưu tiên hơn tên.
+  // Tra cứu theo ID — hậu tố "(id)" trong ô được ưu tiên hơn tên.
   categoriesById: Map<number, DroplistRef>;
   unitsById: Map<number, DroplistRef>;
   usageStatusesById: Map<number, DroplistRef>;
@@ -454,9 +435,8 @@ export class AssetsExcelService {
     headerRow.height = 28;
 
     // 2 dòng ví dụ: dòng 2 lấy luôn giá trị mẫu của từng cột, dòng 3 minh hoạ
-    // dữ liệu thật (dự án + đường dẫn vị trí lấy từ danh mục hiện có).
-    // Các ô ID ở dòng ví dụ được điền ID thật khớp với tên — người dùng thấy
-    // ngay cách dùng cặp ID + Tên.
+    // dữ liệu thật (dự án + đường dẫn vị trí lấy từ danh mục hiện có) theo
+    // dạng "Tên (id)".
     COLUMNS.forEach((col, index) => {
       const example = col.textExample ?? col.example;
       if (example) sheet.getRow(2).getCell(index + 1).value = example;
@@ -468,52 +448,16 @@ export class AssetsExcelService {
       (e) => !firstSite || e.siteId === firstSite.id,
     );
     if (firstSite) {
-      sheet.getRow(3).getCell(columnIndex('siteId')).value = firstSite.id;
-      sheet.getRow(3).getCell(columnIndex('siteName')).value = firstSite.name;
+      sheet.getRow(3).getCell(columnIndex('siteName')).value = withIdSuffix(
+        firstSite.name,
+        firstSite.id,
+      );
     }
     if (firstEntry) {
-      sheet.getRow(3).getCell(columnIndex('locationId')).value = firstEntry.id;
-      sheet.getRow(3).getCell(columnIndex('locationPath')).value =
-        firstEntry.path;
-    }
-
-    const exampleIdOf = (
-      list: Array<{ id: number; name: string }>,
-      name: string,
-    ): number | undefined => {
-      const found = list.find(
-        (item) => normalizeText(item.name) === normalizeText(name),
+      sheet.getRow(3).getCell(columnIndex('locationPath')).value = withIdSuffix(
+        firstEntry.path,
+        firstEntry.id,
       );
-      return found?.id;
-    };
-    const examplePairs: Array<[ColumnKey, ColumnKey, DroplistRef[]]> = [
-      ['categoryId', 'categoryName', ref.categories],
-      ['usageStatusId', 'usageStatusName', ref.usageStatuses],
-      ['conditionId', 'conditionName', ref.conditions],
-      ['unitId', 'unitName', ref.units],
-    ];
-    for (const [idKey, nameKey, list] of examplePairs) {
-      const nameValue = sheet.getRow(2).getCell(columnIndex(nameKey)).value;
-      if (typeof nameValue === 'string') {
-        const id = exampleIdOf(list, nameValue);
-        if (id !== undefined)
-          sheet.getRow(2).getCell(columnIndex(idKey)).value = id;
-      }
-    }
-    const siteExample = sheet.getRow(2).getCell(columnIndex('siteName')).value;
-    if (typeof siteExample === 'string') {
-      const id = exampleIdOf(ref.sites, siteExample);
-      if (id !== undefined)
-        sheet.getRow(2).getCell(columnIndex('siteId')).value = id;
-    }
-    const pathExample = sheet.getRow(2).getCell(columnIndex('locationPath'))
-      .value;
-    if (typeof pathExample === 'string') {
-      const entry = ref.locationEntries.find(
-        (e) => normalizeText(e.path) === normalizeText(pathExample),
-      );
-      if (entry)
-        sheet.getRow(2).getCell(columnIndex('locationId')).value = entry.id;
     }
 
     // Dropdown cho các cột danh mục trên MAX_TEMPLATE_ROWS dòng đầu.
@@ -531,11 +475,12 @@ export class AssetsExcelService {
       }
     });
 
-    // Dropdown LIÊN KẾT Dự án → Vị trí: chọn Dự án (tên hoặc ID) trước,
-    // dropdown Vị trí cùng dòng tự lọc đúng cây của dự án đó.
-    const cascade = addCascadeLists(workbook, ref.sites, ref.locations);
+    // Dropdown LIÊN KẾT Dự án → Vị trí: chọn Dự án trước (danh sách hiện
+    // dạng "Tên (id)"), dropdown Vị trí cùng dòng tự lọc đúng cây của dự án đó.
+    const cascade = addCascadeLists(workbook, ref.sites, ref.locations, {
+      siteLabel: (site) => withIdSuffix(site.name, site.id),
+    });
     if (cascade) {
-      const siteIdLetter = columnLetter(columnIndex('siteId'));
       const siteNameLetter = columnLetter(columnIndex('siteName'));
       for (let row = 2; row <= MAX_TEMPLATE_ROWS; row += 1) {
         sheet.getRow(row).getCell(columnIndex('siteName')).dataValidation = {
@@ -546,9 +491,7 @@ export class AssetsExcelService {
         sheet.getRow(row).getCell(columnIndex('locationPath')).dataValidation = {
           type: 'list',
           allowBlank: true,
-          formulae: [
-            cascade.locationFormula(siteIdLetter, siteNameLetter, row),
-          ],
+          formulae: [cascade.locationFormulaByName(siteNameLetter, row)],
         };
       }
     }
@@ -576,32 +519,48 @@ export class AssetsExcelService {
     ref: ReferenceData,
   ) {
     const sheet = workbook.addWorksheet(REF_SHEET);
-    // Cặp ID + Tên để người dùng copy ID sang file nhập nhiều đợt.
-    const columns: Array<{ header: string; values: Array<string | number> }> = [
-      { header: 'ID danh mục', values: ref.categories.map((r) => r.id) },
-      { header: 'Danh mục tài sản', values: ref.categories.map((r) => r.name) },
-      { header: 'ID đơn vị', values: ref.units.map((r) => r.id) },
-      { header: 'Đơn vị tính', values: ref.units.map((r) => r.name) },
-      { header: 'ID trạng thái', values: ref.usageStatuses.map((r) => r.id) },
+    // Mỗi giá trị đã ở dạng "Tên (id)" để copy nguyên sang file nhập.
+    const columns: Array<{
+      header: string;
+      values: string[];
+      width: number;
+    }> = [
+      {
+        header: 'Danh mục tài sản',
+        values: ref.categories.map((r) => withIdSuffix(r.name, r.id)),
+        width: 34,
+      },
+      {
+        header: 'Đơn vị tính',
+        values: ref.units.map((r) => withIdSuffix(r.name, r.id)),
+        width: 24,
+      },
       {
         header: 'Trạng thái sử dụng',
-        values: ref.usageStatuses.map((r) => r.name),
+        values: ref.usageStatuses.map((r) => withIdSuffix(r.name, r.id)),
+        width: 26,
       },
-      { header: 'ID tình trạng', values: ref.conditions.map((r) => r.id) },
-      { header: 'Tình trạng', values: ref.conditions.map((r) => r.name) },
-      { header: 'ID dự án', values: ref.sites.map((r) => r.id) },
-      { header: 'Dự án', values: ref.sites.map((r) => r.name) },
-      { header: 'ID vị trí', values: ref.locationEntries.map((r) => r.id) },
+      {
+        header: 'Tình trạng',
+        values: ref.conditions.map((r) => withIdSuffix(r.name, r.id)),
+        width: 24,
+      },
+      {
+        header: 'Dự án',
+        values: ref.sites.map((r) => withIdSuffix(r.name, r.id)),
+        width: 34,
+      },
       {
         header: 'Vị trí (đường dẫn đầy đủ)',
-        values: ref.locationEntries.map((r) => r.path),
+        values: ref.locationEntries.map((r) => withIdSuffix(r.path, r.id)),
+        width: 46,
       },
     ];
 
     sheet.columns = columns.map((col, index) => ({
       header: col.header,
       key: `c${index}`,
-      width: index % 2 === 0 ? 14 : 34,
+      width: col.width,
     }));
 
     const headerRow = sheet.getRow(1);
@@ -667,8 +626,9 @@ export class AssetsExcelService {
 
   /**
    * Xuất danh sách tài sản đang lọc ra .xlsx. File xuất dùng nguyên thứ tự
-   * cột của file nhập (kèm mã tài sản) nên nhập lại được ngay — phục vụ nhập
-   * nhiều đợt: nhập đợt 1 → xuất → điền ID → nhập đợt 2.
+   * cột của file nhập (kèm mã tài sản) nên nhập lại được ngay — các cột tham
+   * chiếu đã ở dạng "Tên (id)". Phục vụ nhập nhiều đợt: nhập đợt 1 → xuất →
+   * dùng tiếp file xuất cho đợt 2.
    */
   async buildExport(filters: AssetFilters): Promise<Buffer> {
     const [rows, ref] = await Promise.all([
@@ -733,20 +693,28 @@ export class AssetsExcelService {
       sheet.addRow({
         'Mã tài sản': row.code,
         [COLUMN_BY_KEY.name.header]: row.name,
-        [COLUMN_BY_KEY.siteId.header]: row.location?.siteId ?? '',
-        [COLUMN_BY_KEY.siteName.header]: row.location?.site?.name ?? '',
-        [COLUMN_BY_KEY.locationId.header]: row.locationId ?? '',
-        [COLUMN_BY_KEY.locationPath.header]: pathOf(row.locationId),
-        [COLUMN_BY_KEY.categoryId.header]: row.categoryId ?? '',
-        [COLUMN_BY_KEY.categoryName.header]: row.category?.name ?? '',
-        [COLUMN_BY_KEY.usageStatusId.header]: row.usageStatusId ?? '',
-        [COLUMN_BY_KEY.usageStatusName.header]: row.usageStatus?.name ?? '',
-        [COLUMN_BY_KEY.conditionId.header]: row.conditionId ?? '',
-        [COLUMN_BY_KEY.conditionName.header]: row.condition?.name ?? '',
+        [COLUMN_BY_KEY.siteName.header]: row.location?.site
+          ? withIdSuffix(row.location.site.name, row.location.siteId)
+          : '',
+        [COLUMN_BY_KEY.locationPath.header]:
+          row.locationId == null
+            ? ''
+            : withIdSuffix(pathOf(row.locationId), row.locationId),
+        [COLUMN_BY_KEY.categoryName.header]: named(
+          row.category?.name,
+          row.categoryId,
+        ),
+        [COLUMN_BY_KEY.usageStatusName.header]: named(
+          row.usageStatus?.name,
+          row.usageStatusId,
+        ),
+        [COLUMN_BY_KEY.conditionName.header]: named(
+          row.condition?.name,
+          row.conditionId,
+        ),
         [COLUMN_BY_KEY.quantity.header]:
           row.quantity == null ? '' : Number(row.quantity),
-        [COLUMN_BY_KEY.unitId.header]: row.unitId ?? '',
-        [COLUMN_BY_KEY.unitName.header]: row.unit?.name ?? '',
+        [COLUMN_BY_KEY.unitName.header]: named(row.unit?.name, row.unitId),
         [COLUMN_BY_KEY.usageDate.header]: row.usageDate
           ? formatDateVi(new Date(row.usageDate))
           : '',
@@ -1027,9 +995,7 @@ export class AssetsExcelService {
       );
 
       const categoryId = this.resolveDroplist(
-        text('categoryId'),
         text('categoryName'),
-        'categoryId',
         'categoryName',
         lookup.categoriesById,
         lookup.categories,
@@ -1037,9 +1003,7 @@ export class AssetsExcelService {
         push,
       );
       const usageStatusId = this.resolveDroplist(
-        text('usageStatusId'),
         text('usageStatusName'),
-        'usageStatusId',
         'usageStatusName',
         lookup.usageStatusesById,
         lookup.usageStatuses,
@@ -1047,9 +1011,7 @@ export class AssetsExcelService {
         push,
       );
       const conditionId = this.resolveDroplist(
-        text('conditionId'),
         text('conditionName'),
-        'conditionId',
         'conditionName',
         lookup.conditionsById,
         lookup.conditions,
@@ -1057,9 +1019,7 @@ export class AssetsExcelService {
         push,
       );
       const unitId = this.resolveDroplist(
-        text('unitId'),
         text('unitName'),
-        'unitId',
         'unitName',
         lookup.unitsById,
         lookup.units,
@@ -1067,16 +1027,10 @@ export class AssetsExcelService {
         push,
       );
 
-      const siteId = this.resolveSiteId(
-        text('siteId'),
-        text('siteName'),
-        lookup,
-        push,
-      );
+      const siteId = this.resolveSite(text('siteName'), lookup, push);
       const locationId = this.resolveLocation(
-        text('locationId'),
-        siteId,
         text('locationPath'),
+        siteId,
         lookup,
         push,
       );
@@ -1108,49 +1062,37 @@ export class AssetsExcelService {
   }
 
   /**
-   * Cột ID được ưu tiên: có số là lấy đúng bản ghi đó, không cần khớp tên.
-   * Cột ID để trống mới quay sang khớp theo tên (không phân biệt hoa/dấu).
-   * Cả 2 ô cùng điền mà lệch nhau thì báo lỗi để tránh ghi nhầm.
+   * Ô tham chiếu dạng "Tên (id)": có "(id)" thì lấy đúng bản ghi đó — BE chỉ
+   * dựa vào id, phần tên chỉ để người đọc hiểu. Không có "(id)" thì khớp
+   * theo tên (không phân biệt hoa/dấu); trùng tên phải thêm "(id)".
    */
   private resolveDroplist(
-    idText: string,
-    nameText: string,
-    idKey: ColumnKey,
+    rawText: string,
     nameKey: ColumnKey,
     byId: Map<number, DroplistRef>,
     byName: Map<string, number[]>,
     label: string,
     push: (key: ColumnKey, message: string) => void,
   ): number | null {
-    if (idText) {
-      const parsed = parseIdValue(idText);
-      if (parsed.error) {
-        push(idKey, parsed.error);
-        return null;
-      }
-      const id = parsed.value as number;
-      const found = byId.get(id);
-      if (!found) {
-        push(idKey, `${COLUMN_BY_KEY[idKey].header} #${id} không tồn tại.`);
-        return null;
-      }
-      if (nameText && normalizeText(found.name) !== normalizeText(nameText)) {
+    if (!rawText) return null;
+    const { name, id } = splitNameId(rawText);
+    if (id !== null) {
+      if (!byId.has(id)) {
         push(
           nameKey,
-          `Tên "${nameText}" không khớp ${label} của ${COLUMN_BY_KEY[idKey].header} #${id} ("${found.name}").`,
+          `"${rawText}" có (id) #${id} không tồn tại. Xem sheet "Danh mục" để copy đúng.`,
         );
         return null;
       }
       return id;
     }
-    if (!nameText) return null;
-    const ids = byName.get(normalizeText(nameText));
+    const ids = byName.get(normalizeText(name));
     if (!ids) {
       const known = byName.size;
       push(
         nameKey,
         known > 0
-          ? `"${nameText}" không khớp ${label} nào. Xem sheet "Danh mục" để chọn đúng tên hoặc điền ID.`
+          ? `"${name}" không khớp ${label} nào. Xem sheet "Danh mục" để chọn đúng tên.`
           : `Chưa có ${label} nào trong hệ thống.`,
       );
       return null;
@@ -1158,7 +1100,7 @@ export class AssetsExcelService {
     if (ids.length > 1) {
       push(
         nameKey,
-        `"${nameText}" khớp nhiều ${label} — điền ${COLUMN_BY_KEY[idKey].header} để xác định đúng bản ghi.`,
+        `"${name}" khớp nhiều ${label} — thêm (id) vào sau tên, ví dụ "${name} (${ids[0]})". Xem sheet "Danh mục".`,
       );
       return null;
     }
@@ -1191,77 +1133,68 @@ export class AssetsExcelService {
     return parsed.quantity ?? null;
   }
 
-  /** Dự án: ưu tiên "ID dự án", trống mới khớp "Dự án" theo tên. */
-  private resolveSiteId(
-    idText: string,
-    nameText: string,
+  /** Dự án dạng "Tên (id)": có "(id)" thì lấy đúng dự án đó — BE chỉ dựa vào id. */
+  private resolveSite(
+    rawText: string,
     lookup: ReferenceLookups,
     push: (key: ColumnKey, message: string) => void,
   ): number | null {
-    if (idText) {
-      const parsed = parseIdValue(idText);
-      if (parsed.error) {
-        push('siteId', parsed.error);
-        return null;
-      }
-      const id = parsed.value as number;
-      const found = lookup.sitesById.get(id);
-      if (!found) {
-        push('siteId', `ID dự án #${id} không tồn tại.`);
-        return null;
-      }
-      if (nameText && normalizeText(found.name) !== normalizeText(nameText)) {
+    if (!rawText) return null;
+    const { name, id } = splitNameId(rawText);
+    if (id !== null) {
+      if (!lookup.sitesById.has(id)) {
         push(
           'siteName',
-          `Tên "${nameText}" không khớp dự án của ID dự án #${id} ("${found.name}").`,
+          `"${rawText}" có (id) #${id} không tồn tại. Xem sheet "Danh mục" để copy đúng.`,
         );
         return null;
       }
       return id;
     }
-    if (!nameText) return null;
-    const ids = lookup.sites.get(normalizeText(nameText));
+    const ids = lookup.sites.get(normalizeText(name));
     if (!ids) {
       push(
         'siteName',
-        `"${nameText}" không khớp dự án nào. Xem sheet "Danh mục" hoặc điền ID dự án.`,
+        `"${name}" không khớp dự án nào. Xem sheet "Danh mục" để chọn đúng.`,
       );
       return null;
     }
     if (ids.length > 1) {
-      push('siteName', `"${nameText}" khớp nhiều dự án — điền ID dự án để xác định.`);
+      push(
+        'siteName',
+        `"${name}" khớp nhiều dự án — thêm (id) vào sau tên, ví dụ "${name} (${ids[0]})".`,
+      );
       return null;
     }
     return ids[0];
   }
 
   /**
-   * Vị trí: ưu tiên "ID vị trí". Trống mới dùng Dự án + đường dẫn "Vị trí".
-   * Có ID mà Dự án đi kèm lệch site thì vẫn báo lỗi để bắt lỗi copy-paste.
+   * Vị trí dạng "đường dẫn (id)": có "(id)" thì lấy đúng vị trí đó — BE chỉ
+   * dựa vào id (kèm kiểm tra thuộc đúng dự án). Không có "(id)" thì dùng
+   * Dự án + đường dẫn "Vị trí" như cũ.
    */
   private resolveLocation(
-    locationIdText: string,
+    rawText: string,
     siteId: number | null,
-    locationPath: string,
     lookup: ReferenceLookups,
     push: (key: ColumnKey, message: string) => void,
   ): number | null {
-    if (locationIdText) {
-      const parsed = parseIdValue(locationIdText);
-      if (parsed.error) {
-        push('locationId', parsed.error);
-        return null;
-      }
-      const id = parsed.value as number;
+    if (!rawText) return null;
+    const { id } = splitNameId(rawText);
+    if (id !== null) {
       const found = lookup.locationsById.get(id);
       if (!found) {
-        push('locationId', `ID vị trí #${id} không tồn tại.`);
+        push(
+          'locationPath',
+          `"${rawText}" có (id) #${id} không tồn tại. Xem sheet "Danh mục" để copy đúng.`,
+        );
         return null;
       }
       if (siteId !== null && found.siteId !== siteId) {
         push(
-          'locationId',
-          `ID vị trí #${id} không thuộc dự án đã chọn. Bỏ trống Dự án hoặc sửa lại ID.`,
+          'locationPath',
+          `Vị trí (#${id}) không thuộc dự án đã chọn. Bỏ trống Dự án hoặc sửa lại.`,
         );
         return null;
       }
@@ -1269,34 +1202,16 @@ export class AssetsExcelService {
     }
 
     if (siteId === null) {
-      if (locationPath) {
-        push(
-          'siteName',
-          `Phải nhập "${COLUMN_BY_KEY.siteId.header}" hoặc "${COLUMN_BY_KEY.siteName.header}" khi đã điền "${COLUMN_BY_KEY.locationPath.header}".`,
-        );
-      }
+      push(
+        'siteName',
+        `Phải nhập "${COLUMN_BY_KEY.siteName.header}" khi đã điền "${COLUMN_BY_KEY.locationPath.header}".`,
+      );
       return null;
     }
 
-    if (!locationPath) return null;
-
-    const segments = locationPath
-      .split(/\s*(?:>|\/)\s*/)
-      .map((segment) => segment.trim())
-      .filter(Boolean);
-    if (segments.length === 0) return null;
-
-    // Sheet 'Danh mục' liệt kê đường dẫn có kèm tên dự án ở đầu
-    // ("Tòa A > Tầng 1") để phân biệt trùng tên giữa 2 dự án. Bỏ đoạn đầu
-    // nếu trùng tên dự án của vị trí đang tra.
     const siteName = lookup.sitesById.get(siteId)?.name ?? '';
-    if (
-      segments.length > 1 &&
-      siteName &&
-      normalizeText(segments[0]) === normalizeText(siteName)
-    ) {
-      segments.shift();
-    }
+    const segments = pathSegments(rawText, siteName);
+    if (segments.length === 0) return null;
 
     let parentId: number | null = null;
     let currentId: number | null = null;
@@ -1318,10 +1233,9 @@ export class AssetsExcelService {
         return null;
       }
       if (candidates.length > 1) {
-        const ids = candidates.map((item) => `#${item.id}`);
         push(
           'locationPath',
-          `"${segment}" trùng tên — điền ID vị trí (${ids.join(', ')}) để xác định đúng. Xem sheet "Danh mục".`,
+          `"${segment}" trùng tên — copy nguyên chuỗi "đường dẫn (id)" từ sheet "Danh mục".`,
         );
         return null;
       }
@@ -1334,6 +1248,32 @@ export class AssetsExcelService {
 
 function orNull(value: string): string | null {
   return value ? value : null;
+}
+
+/** "Tên" + id -> "Tên (id)". Chưa có tên thì để trống. */
+function named(
+  name: string | null | undefined,
+  id: number | null | undefined,
+): string {
+  if (!name) return '';
+  return withIdSuffix(name, id ?? null);
+}
+
+/**
+ * Tách đường dẫn "Tòa A > Tầng 1 > Phòng A" thành các cấp. Bỏ đoạn đầu nếu
+ * trùng tên dự án (sheet 'Danh mục' liệt kê đường dẫn kèm tên dự án ở đầu
+ * để phân biệt trùng tên giữa 2 dự án).
+ */
+function pathSegments(path: string, siteName: string): string[] {
+  const segments = splitPath(path);
+  if (
+    segments.length > 1 &&
+    siteName &&
+    normalizeText(segments[0]) === normalizeText(siteName)
+  ) {
+    segments.shift();
+  }
+  return segments;
 }
 
 function formatCode(sequence: number): string {
