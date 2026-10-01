@@ -13,6 +13,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { canViewAll } from '../../common/access.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import { CreateSiteDto } from './dto/create-site.dto.js';
 import { UpdateSiteDto } from './dto/update-site.dto.js';
@@ -30,8 +33,14 @@ export class SitesController {
   ) {}
 
   @Get()
-  findAll(@Query('includeDeleted') includeDeleted?: string) {
-    return this.sitesService.findAll(includeDeleted === 'true');
+  findAll(
+    @CurrentUser() user: JwtPayload,
+    @Query('includeDeleted') includeDeleted?: string,
+  ) {
+    return this.sitesService.findAll(includeDeleted === 'true', {
+      meId: user.sub,
+      viewAll: canViewAll(user.permissions),
+    });
   }
 
   // Các route import/export phải khai báo TRƯỚC `@Get(':id')`, nếu không Nest
@@ -67,8 +76,14 @@ export class SitesController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.sitesService.findOne(id);
+  findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.sitesService.findOne(id, false, {
+      meId: user.sub,
+      viewAll: canViewAll(user.permissions),
+    });
   }
 
   @RequirePermissions('ADMIN')

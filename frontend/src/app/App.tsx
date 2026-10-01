@@ -23,6 +23,13 @@ import {
   ProjectPage,
 } from '@/pages/app';
 import {
+  EmployeeListPage,
+  GroupListPage,
+  HrCatalogPage,
+  InvestorAccountPage,
+  RequireAdmin,
+} from '@/pages/admin';
+import {
   AssetListPage,
   AssetDroplistPage,
   SiteLocationPage,
@@ -159,13 +166,37 @@ function Shell() {
           />
         </Route>
         <Route path="/admin" element={<HomePage onLogout={handleLogout} />}>
+          <Route index element={<Navigate to="employees" replace />} />
           <Route
-            index
+            path="employees"
             element={
-              <ModulePlaceholderPage
-                moduleName="Quản trị hệ thống"
-                description="Quản lý người dùng, nhóm, quyền và phân quyền dữ liệu sẽ có ở đây."
-              />
+              <RequireAdmin>
+                <EmployeeListPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="groups"
+            element={
+              <RequireAdmin>
+                <GroupListPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="investor-accounts"
+            element={
+              <RequireAdmin>
+                <InvestorAccountPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="catalogs"
+            element={
+              <RequireAdmin>
+                <HrCatalogPage />
+              </RequireAdmin>
             }
           />
         </Route>

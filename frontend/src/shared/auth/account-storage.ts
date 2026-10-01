@@ -31,7 +31,7 @@ export function clearToken(): void {
   }
 }
 
-// --- refresh token (đổi cặp token mới khi access hết hạn 15 phút) ---
+// --- refresh token (đổi cặp token mới khi access hết hạn) ---
 export function getRefreshToken(): string | null {
   try {
     return localStorage.getItem(REFRESH_TOKEN_KEY);

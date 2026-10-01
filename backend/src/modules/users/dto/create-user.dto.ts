@@ -54,7 +54,7 @@ export class CreateUserDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  userLevel?: number;
+  userLevelId?: number;
 
   // Ảnh đại diện / chữ ký điện tử: lưu path file
   @IsOptional()

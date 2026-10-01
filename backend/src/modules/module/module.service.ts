@@ -14,9 +14,23 @@ const safeUserSelect = {
 export class ModuleService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(includeDeleted = false) {
+  // Sidebar rail lọc theo user: chỉ module được gán trực tiếp (viewerUsers)
+  // hoặc qua nhóm (viewerGroups). ADMIN/CEO xem tất cả nhờ seed gán đủ.
+  findAll(includeDeleted = false, userId?: number) {
+    const scoped =
+      userId === undefined
+        ? undefined
+        : {
+            OR: [
+              { viewerUsers: { some: { id: userId } } },
+              { viewerGroups: { some: { users: { some: { id: userId } } } } },
+            ],
+          };
     return this.prisma.module.findMany({
-      where: includeDeleted ? undefined : { isDeleted: false },
+      where: {
+        ...(includeDeleted ? {} : { isDeleted: false }),
+        ...scoped,
+      },
       include: {
         viewerUsers: { select: safeUserSelect },
         viewerGroups: { include: { permissions: true } },

@@ -30,7 +30,7 @@ export class AuthService {
       { sub: userId, accountName },
       {
         secret: this.config.get<string>('jwt.secret'),
-        expiresIn: toExpiresIn(this.config.get<string>('jwt.expiresIn'), '15m'),
+        expiresIn: toExpiresIn(this.config.get<string>('jwt.expiresIn'), '8h'),
       },
     );
   }

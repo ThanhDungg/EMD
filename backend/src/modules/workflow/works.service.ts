@@ -26,6 +26,7 @@ import {
   type WorkRole,
 } from './work-rules.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { userSiteIds } from '../../common/access.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateWorkDto } from './dto/create-work.dto.js';
 import type { UpdateWorkDto } from './dto/update-work.dto.js';
@@ -77,8 +78,11 @@ const MAX_CATCH_UP_PER_RUN = 20;
 export interface FindWorksFilter {
   scope?: WorkScope;
   meId: number;
-  // Quyền xem bản đã xoá mềm (chỉ ADMIN, service tự ép false nếu không phải)
+  // Quyền xem bản đã xoá mềm + xem toàn bộ (ADMIN/CEO/HO, service tự ép
+  // false nếu không phải)
   isAdmin?: boolean;
+  // true = nhân viên kỹ thuật thuần tuý: chỉ thấy việc mình được giao thực hiện
+  handledOnly?: boolean;
   categoryId?: number;
   statusId?: number;
   // Trễ hạn: quá endDate mà trạng thái chưa đóng (mỗi loại việc 1 tab riêng ở FE)
@@ -113,7 +117,8 @@ export class WorksService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Vai trò của user đối với 1 work (assigner > handler > follower > outsider).
+   * Vai trò của user đối với 1 work (assigner > handler > follower > manager > outsider).
+   * managesSite = user là quản lý/thành viên của dự án chứa việc (QLDA/GSV).
    * Chấp nhận cả 2 dạng: row thô `{ userId }` (work_handlers) và dạng đã phẳng
    * `{ id }` sau khi qua toResponse.
    */
@@ -125,6 +130,7 @@ export class WorksService {
     },
     meId: number,
     isAdmin = false,
+    managesSite = false,
   ): WorkRole {
     return roleOf(
       {
@@ -134,7 +140,24 @@ export class WorksService {
       },
       meId,
       isAdmin,
+      managesSite,
     );
+  }
+
+  /** Id các dự án trong phạm vi của user; null = xem tất cả (ADMIN/CEO/HO). */
+  private scopeSiteIds(meId: number | undefined, isAdmin: boolean) {
+    if (isAdmin || meId === undefined) return Promise.resolve(null);
+    return userSiteIds(this.prisma, meId);
+  }
+
+  /** User có quản lý/thành viên của dự án chứa work không (QLDA/GSV). */
+  private managesWorkSite(
+    work: { siteId: number | null },
+    scopeIds: number[] | null,
+    handledOnly: boolean,
+  ): boolean {
+    if (handledOnly || scopeIds === null || work.siteId === null) return false;
+    return scopeIds.includes(work.siteId);
   }
 
   // --- Lịch sử trạng thái ---
@@ -160,8 +183,8 @@ export class WorksService {
   }
 
   /** Timeline lịch sử của 1 work (mới nhất trước). */
-  async history(id: number, meId?: number, isAdmin = false) {
-    await this.findOne(id, meId, isAdmin);
+  async history(id: number, meId?: number, isAdmin = false, handledOnly = false) {
+    await this.findOne(id, meId, isAdmin, handledOnly);
     return this.prisma.workStatusHistory.findMany({
       where: { workId: id },
       include: {
@@ -197,6 +220,7 @@ export class WorksService {
     const {
       scope = 'all',
       meId,
+      handledOnly = false,
       isAdmin = false,
       categoryId,
       statusId,
@@ -220,16 +244,24 @@ export class WorksService {
     if (scope === 'assigned') and.push({ assignerId: meId });
     if (scope === 'handled') and.push({ handlers: { some: { userId: meId } } });
     if (scope === 'followed') and.push({ followers: { some: { id: meId } } });
-    // Quyền xem: user thường chỉ thấy việc liên quan tới mình (người giao /
-    // người thực hiện / người theo dõi). ADMIN xem được toàn bộ.
+    // Quyền xem:
+    // - ADMIN/CEO/HO xem toàn bộ.
+    // - Kỹ thuật (handledOnly) chỉ thấy việc mình được giao thực hiện.
+    // - Còn lại (QLDA/GSV...) thấy việc liên quan tới mình (giao / thực hiện /
+    //   theo dõi) + toàn bộ việc thuộc dự án của mình.
     if (!isAdmin) {
-      and.push({
-        OR: [
+      if (handledOnly) {
+        and.push({ handlers: { some: { userId: meId } } });
+      } else {
+        const scopeIds = (await this.scopeSiteIds(meId, false)) ?? [];
+        const or: Prisma.WorkWhereInput[] = [
           { assignerId: meId },
           { handlers: { some: { userId: meId } } },
           { followers: { some: { id: meId } } },
-        ],
-      });
+        ];
+        if (scopeIds.length > 0) or.push({ siteId: { in: scopeIds } });
+        and.push({ OR: or });
+      }
     }
     if (categoryId !== undefined) and.push({ categoryId });
     if (statusId !== undefined) and.push({ statusId });
@@ -299,10 +331,12 @@ export class WorksService {
    * Chi tiết công việc: có kiểm tra quyền xem ở server (tài liệu §4.11).
    * Truyền `meId` = undefined thì bỏ qua kiểm tra (dùng nội bộ/cron).
    */
-  async findOne(id: number, meId?: number, isAdmin = false) {
+  async findOne(id: number, meId?: number, isAdmin = false, handledOnly = false) {
     const work = await this.loadWork(id);
     if (meId !== undefined) {
-      assertCanView(this.roleOf(work, meId, isAdmin));
+      const scopeIds = await this.scopeSiteIds(meId, isAdmin);
+      const managesSite = this.managesWorkSite(work, scopeIds, handledOnly);
+      assertCanView(this.roleOf(work, meId, isAdmin, managesSite));
     }
     return this.toResponse(work);
   }
@@ -837,8 +871,23 @@ export class WorksService {
     return { handlerIds, followerIds };
   }
 
-  /** Người giao = user đang đăng nhập (tự gắn, không nhận từ client) */
-  async create(dto: CreateWorkDto, assignerId: number) {
+  /** Người giao = user đang đăng nhập (tự gắn, không nhận từ client).
+   * Kỹ thuật thuần tuý không được tạo việc (chỉ làm việc được giao).
+   * QLDA/GSV chỉ tạo việc thuộc dự án của mình (có siteId thì phải trong
+   * phạm vi; không site thì cho qua vì là việc chung không gắn dự án). */
+  async create(
+    dto: CreateWorkDto,
+    assignerId: number,
+    access: { viewAll: boolean; handledOnly: boolean } = {
+      viewAll: true,
+      handledOnly: false,
+    },
+  ) {
+    if (access.handledOnly) {
+      throw new ForbiddenException(
+        'Nhân viên kỹ thuật chỉ thực hiện công việc được giao, không tạo việc mới.',
+      );
+    }
     const {
       categoryId,
       statusId,
@@ -853,6 +902,14 @@ export class WorksService {
       recurrence,
       ...rest
     } = dto;
+    if (!access.viewAll && siteId !== undefined) {
+      const scopeIds = await userSiteIds(this.prisma, assignerId);
+      if (!scopeIds.includes(siteId)) {
+        throw new ForbiddenException(
+          `Bạn chỉ được tạo việc thuộc dự án của mình (dự án #${siteId} ngoài phạm vi).`,
+        );
+      }
+    }
     const resolvedStatusId = await this.resolveStatusId(categoryId, statusId);
     const { handlerIds: uniqueHandlers, followerIds: uniqueFollowers } =
       await this.assertReferences({
@@ -915,10 +972,18 @@ export class WorksService {
     return this.toResponse(created);
   }
 
-  // Chỉ người giao, người thực hiện (hoặc ADMIN) được sửa
-  async update(id: number, dto: UpdateWorkDto, meId: number, isAdmin: boolean) {
-    const work = await this.findOne(id, meId, isAdmin);
-    assertCanEdit(this.roleOf(work, meId, isAdmin));
+  // Chỉ người giao, người thực hiện, quản lý dự án của site (hoặc ADMIN) được sửa
+  async update(
+    id: number,
+    dto: UpdateWorkDto,
+    meId: number,
+    isAdmin: boolean,
+    handledOnly = false,
+  ) {
+    const work = await this.findOne(id, meId, isAdmin, handledOnly);
+    const scopeIds = await this.scopeSiteIds(meId, isAdmin);
+    const managesSite = this.managesWorkSite(work, scopeIds, handledOnly);
+    assertCanEdit(this.roleOf(work, meId, isAdmin, managesSite));
     const {
       categoryId,
       statusId,
@@ -1116,9 +1181,11 @@ export class WorksService {
     return status;
   }
 
-  async remove(id: number, meId: number, isAdmin: boolean) {
-    const work = await this.findOne(id, meId, isAdmin);
-    assertCanDelete(this.roleOf(work, meId, isAdmin));
+  async remove(id: number, meId: number, isAdmin: boolean, handledOnly = false) {
+    const work = await this.findOne(id, meId, isAdmin, handledOnly);
+    const scopeIds = await this.scopeSiteIds(meId, isAdmin);
+    const managesSite = this.managesWorkSite(work, scopeIds, handledOnly);
+    assertCanDelete(this.roleOf(work, meId, isAdmin, managesSite));
     return this.prisma.$transaction(async (tx) => {
       // Xoá mẫu lặp → tắt lịch, nếu không cron vẫn sinh việc con cho mẫu đã xoá.
       if (work.isRecurrence && work.recurrenceSchedule) {
@@ -1133,7 +1200,7 @@ export class WorksService {
 
   // Mở lại công việc đã xoá mềm (ADMIN hoặc người trong cuộc).
   // findOne chặn bản đã xoá nên đọc trực tiếp + check quyền như remove.
-  async restore(id: number, meId: number, isAdmin: boolean) {
+  async restore(id: number, meId: number, isAdmin: boolean, handledOnly = false) {
     const work = await this.prisma.work.findUnique({
       where: { id },
       include: { handlers: { select: { userId: true } } },
@@ -1141,9 +1208,14 @@ export class WorksService {
     if (!work) throw new NotFoundException(`Work #${id} không tồn tại.`);
     const involved =
       work.assignerId === meId || work.handlers.some((h) => h.userId === meId);
-    if (!involved && !isAdmin) {
+    let managesSite = false;
+    if (!involved && !isAdmin && !handledOnly && work.siteId !== null) {
+      const scopeIds = (await this.scopeSiteIds(meId, false)) ?? [];
+      managesSite = scopeIds.includes(work.siteId);
+    }
+    if (!involved && !managesSite && !isAdmin) {
       throw new ForbiddenException(
-        'Chỉ người giao, người thực hiện hoặc ADMIN được khôi phục.',
+        'Chỉ người giao, người thực hiện, quản lý dự án hoặc ADMIN được khôi phục.',
       );
     }
     // Trong lúc work bị xoá, status/loại có thể đã bị xoá mềm theo: khôi phục

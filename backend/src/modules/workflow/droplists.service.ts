@@ -85,6 +85,31 @@ export const DROPLISTS = {
     label: 'Loại nhà thầu',
     module: 'APPLICATIONS',
   },
+  // Nhân sự (module Nhân sự & Phân quyền)
+  position: {
+    model: 'position',
+    table: 'positions',
+    label: 'Chức vụ',
+    module: 'SYSTEM_ADMIN',
+  },
+  department: {
+    model: 'department',
+    table: 'departments',
+    label: 'Đơn vị',
+    module: 'SYSTEM_ADMIN',
+  },
+  userStatus: {
+    model: 'userStatus',
+    table: 'user_statuses',
+    label: 'Trạng thái nhân sự',
+    module: 'SYSTEM_ADMIN',
+  },
+  userLevel: {
+    model: 'userLevel',
+    table: 'user_levels',
+    label: 'Cấp bậc',
+    module: 'SYSTEM_ADMIN',
+  },
   // Danh mục kiểm tra năng lượng
   factory: {
     model: 'factory',
@@ -106,9 +131,36 @@ export type DroplistRow = {
   updatedAt: Date;
 };
 
+type HrKey = 'position' | 'department' | 'userStatus' | 'userLevel';
+
+interface HrDelegate {
+  findMany(args: unknown): Promise<DroplistRow[]>;
+  findUnique(args: unknown): Promise<DroplistRow | null>;
+  create(args: unknown): Promise<DroplistRow>;
+  update(args: unknown): Promise<DroplistRow>;
+}
+
 @Injectable()
 export class DroplistsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 4 bảng nhân sự cùng shape (id / code? / name / isDeleted) nhưng KHÔNG có
+   * uuid/createdAt như các droplist khác nên đi qua delegate gõ lỏng, ép về
+   * DroplistRow ở biên.
+   */
+  private hrDelegate(key: HrKey): HrDelegate {
+    switch (key) {
+      case 'position':
+        return this.prisma.position as unknown as HrDelegate;
+      case 'department':
+        return this.prisma.department as unknown as HrDelegate;
+      case 'userStatus':
+        return this.prisma.userStatus as unknown as HrDelegate;
+      case 'userLevel':
+        return this.prisma.userLevel as unknown as HrDelegate;
+    }
+  }
 
   findAll(key: DroplistKey, includeDeleted = false) {
     const where = includeDeleted ? undefined : { isDeleted: false };
@@ -169,6 +221,14 @@ export class DroplistsService {
           where,
           orderBy: { id: 'asc' },
         });
+      case 'position':
+      case 'department':
+      case 'userStatus':
+      case 'userLevel':
+        return this.hrDelegate(key).findMany({
+          where,
+          orderBy: { id: 'asc' },
+        });
     }
   }
 
@@ -203,6 +263,11 @@ export class DroplistsService {
         return this.prisma.investorGroup.findUnique({ where: { id } });
       case 'contractorType':
         return this.prisma.contractorType.findUnique({ where: { id } });
+      case 'position':
+      case 'department':
+      case 'userStatus':
+      case 'userLevel':
+        return this.hrDelegate(key).findUnique({ where: { id } });
     }
   }
 
@@ -248,6 +313,11 @@ export class DroplistsService {
         });
       case 'contractorType':
         return this.prisma.contractorType.create({ data });
+      case 'position':
+      case 'department':
+      case 'userStatus':
+      case 'userLevel':
+        return this.hrDelegate(key).create({ data });
     }
   }
 
@@ -291,11 +361,13 @@ export class DroplistsService {
         });
       case 'contractorType':
         return this.prisma.contractorType.update({ where: { id }, data });
+      case 'position':
+      case 'department':
+      case 'userStatus':
+      case 'userLevel':
+        return this.hrDelegate(key).update({ where: { id }, data });
     }
   }
-
-  // Xoá mềm: dữ liệu đang tham chiếu vẫn giữ FK, droplist chỉ ẩn khỏi
-  // danh sách chọn.
   async remove(key: DroplistKey, id: number) {
     await this.findOne(key, id);
     return this.setDeleted(key, id, true);
@@ -340,6 +412,11 @@ export class DroplistsService {
         return this.prisma.investorGroup.update({ where: { id }, data });
       case 'contractorType':
         return this.prisma.contractorType.update({ where: { id }, data });
+      case 'position':
+      case 'department':
+      case 'userStatus':
+      case 'userLevel':
+        return this.hrDelegate(key).update({ where: { id }, data });
     }
   }
 }

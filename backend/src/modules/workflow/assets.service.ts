@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { toDateOnly } from '../../common/datetime.js';
+import { userSiteIds } from '../../common/access.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateAssetDto } from './dto/create-asset.dto.js';
 import type { UpdateAssetDto } from './dto/update-asset.dto.js';
@@ -34,13 +36,17 @@ export interface AssetFilters {
   /** Tìm theo mã / tên / model / nhà cung cấp. */
   keyword?: string;
   includeDeleted?: boolean;
+  /** Phạm vi dự án (QLDA/GSV/kỹ thuật). viewAll = ADMIN/CEO/HO. */
+  scope?: { meId: number; viewAll: boolean };
 }
 
 @Injectable()
 export class AssetsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(filters: AssetFilters = {}) {
+  // Tài sản chưa gắn vị trí thì ai cũng xem; đã gắn vị trí thì chỉ người
+  // trong dự án đó (và ADMIN/CEO/HO) được xem.
+  async findAll(filters: AssetFilters = {}) {
     const {
       siteId,
       locationId,
@@ -48,10 +54,19 @@ export class AssetsService {
       usageStatusId,
       conditionId,
       keyword,
+      scope,
     } = filters;
+    let siteFilter = {};
+    if (scope && !scope.viewAll) {
+      const ids = await userSiteIds(this.prisma, scope.meId);
+      siteFilter = {
+        OR: [{ locationId: null }, { location: { siteId: { in: ids } } }],
+      };
+    }
     return this.prisma.asset.findMany({
       where: {
         ...(filters.includeDeleted ? {} : { isDeleted: false }),
+        ...siteFilter,
         ...(categoryId != null ? { categoryId } : {}),
         ...(usageStatusId != null ? { usageStatusId } : {}),
         ...(conditionId != null ? { conditionId } : {}),
@@ -76,13 +91,19 @@ export class AssetsService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, scope?: { meId: number; viewAll: boolean }) {
     const asset = await this.prisma.asset.findUnique({
       where: { id },
       include: droplistInclude,
     });
     if (!asset || asset.isDeleted) {
       throw new NotFoundException(`Asset #${id} không tồn tại.`);
+    }
+    if (scope && !scope.viewAll && asset.location?.siteId != null) {
+      const ids = await userSiteIds(this.prisma, scope.meId);
+      if (!ids.includes(asset.location.siteId)) {
+        throw new ForbiddenException(`Bạn không có quyền xem tài sản #${id}.`);
+      }
     }
     return asset;
   }

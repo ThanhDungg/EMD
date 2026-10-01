@@ -15,6 +15,7 @@ import type { UpdateUserDto } from './dto/update-user.dto.js';
 // quyền cho user thuộc group/perms đã bị vô hiệu (tài liệu §10.2 deny-by-default).
 const userInclude = {
   position: true,
+  userLevel: true,
   department: true,
   coDepartment: true,
   status: true,
@@ -94,12 +95,24 @@ export class UsersService {
       },
     });
   }
-
   /** Dùng nội bộ cho auth refresh: user chưa xoá theo id (kèm hash) */
   findActiveById(id: number) {
     return this.prisma.user.findFirst({
       where: { id, isDeleted: false },
     });
+  }
+
+  /** Danh mục cho form tài khoản + file mẫu: chức vụ / cấp bậc / đơn vị / trạng thái. */
+  async references() {
+    const notDeleted = { isDeleted: false };
+    const byName = { name: 'asc' as const };
+    const [positions, userLevels, departments, statuses] = await Promise.all([
+      this.prisma.position.findMany({ where: notDeleted, orderBy: byName }),
+      this.prisma.userLevel.findMany({ where: notDeleted, orderBy: byName }),
+      this.prisma.department.findMany({ where: notDeleted, orderBy: byName }),
+      this.prisma.userStatus.findMany({ where: notDeleted, orderBy: byName }),
+    ]);
+    return { positions, userLevels, departments, statuses };
   }
 
   /** Dùng nội bộ cho auth: lưu/xoá hash refresh token (xoay vòng khi refresh) */

@@ -11,8 +11,8 @@ import type {
 } from '../model/home';
 import { templateToRecurrence } from '../model/home';
 
-// 8 module core seed sẵn ở backend — dùng fallback khi tài khoản
-// không có quyền gọi GET /modules (endpoint đang khoá ADMIN).
+// 8 module core seed sẵn ở backend — dùng fallback khi API lỗi.
+// GET /modules đã lọc theo user (trực tiếp hoặc qua nhóm).
 const FALLBACK_MODULES: ModuleItem[] = [
   { code: 'WORKFLOW', vnName: 'Quy trình', engName: 'Workflow' },
   { code: 'APPLICATIONS', vnName: 'Ứng dụng', engName: 'Applications' },

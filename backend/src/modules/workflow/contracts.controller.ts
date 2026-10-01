@@ -10,6 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
+import { canViewAll } from '../../common/access.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { ContractsService } from './contracts.service.js';
 import { CreateContractDocumentDto } from './dto/contract-document.dto.js';
 import { CreateContractDto } from './dto/create-contract.dto.js';
@@ -22,13 +25,25 @@ export class ContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 
   @Get()
-  findAll(@Query('includeDeleted') includeDeleted?: string) {
-    return this.contractsService.findAll(includeDeleted === 'true');
+  findAll(
+    @CurrentUser() user: JwtPayload,
+    @Query('includeDeleted') includeDeleted?: string,
+  ) {
+    return this.contractsService.findAll(includeDeleted === 'true', {
+      meId: user.sub,
+      viewAll: canViewAll(user.permissions),
+    });
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.contractsService.findOne(id);
+  findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.contractsService.findOne(id, {
+      meId: user.sub,
+      viewAll: canViewAll(user.permissions),
+    });
   }
 
   @RequirePermissions('ADMIN')

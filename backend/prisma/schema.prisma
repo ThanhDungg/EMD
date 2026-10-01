@@ -29,7 +29,9 @@ model User {
   internalPhone String?      @map("internal_phone")
   phone         String?
   hireDate      DateTime?    @map("hire_date") @db.Date
-  userLevel     Int?         @map("user_level")
+  // --- Droplist: cấp bậc (bảng riêng) ---
+  userLevelId Int?       @map("user_level_id")
+  userLevel   UserLevel? @relation(fields: [userLevelId], references: [id], onDelete: SetNull)
   avatarPath    String?      @map("avatar_path")
   signaturePath String?      @map("signature_path")
   isDeleted     Boolean      @default(false) @map("is_deleted")
@@ -815,7 +817,6 @@ model ProvidedService {
   name        String
   isDeleted   Boolean      @default(false) @map("is_deleted")
   sites       Site[]
-  contracts   Contract[]
   contractors Contractor[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -1114,10 +1115,8 @@ model Contract {
   // Bảng đường dẫn tài liệu của hợp đồng
   documents     ContractDocument[]
 
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
-  providedService   ProvidedService? @relation(fields: [providedServiceId], references: [id])
-  providedServiceId Int?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([contractType])
   @@map("contracts")
@@ -1477,6 +1476,17 @@ model UserStatus {
   users     User[]
 
   @@map("user_statuses")
+}
+
+// ================= Bảng droplist: cấp bậc nhân viên =================
+model UserLevel {
+  id        Int     @id @default(autoincrement())
+  code      String? @unique
+  name      String
+  isDeleted Boolean @default(false) @map("is_deleted")
+  users     User[]
+
+  @@map("user_levels")
 }
 
 // ================= Nhóm người dùng =================

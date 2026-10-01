@@ -2,6 +2,7 @@ import { env } from '@/shared/config';
 import {
   clearToken,
   getRefreshToken,
+  getToken,
   setRefreshToken,
   setToken,
 } from '@/shared/auth';
@@ -80,11 +81,19 @@ async function send(
         : {}),
   });
 
-  // Access token hết hạn (15 phút): tự đổi cặp token mới rồi gọi lại 1 lần.
+  // Access token hết hạn: tự đổi cặp token mới rồi gọi lại 1 lần.
   // Bỏ qua chính API auth để không lặp (sai pass vẫn 401 bình thường).
   if (res.status === 401 && !retried && !path.startsWith('/auth/')) {
     const fresh = await refreshAccessToken();
     if (fresh) return send(path, { ...options, token: fresh, retried: true });
+    // Refresh thất bại — thường do mở nhiều tab: tab kia vừa xoay vòng
+    // refresh token trước nên token của tab này bị lỗi thời, nhưng storage
+    // dùng chung có thể đã có token mới. Thử lại 1 lần với token hiện tại
+    // trong storage trước khi đá về đăng nhập.
+    const current = getToken();
+    if (current && current !== token) {
+      return send(path, { ...options, token: current, retried: true });
+    }
     // Refresh cũng hết hạn → về màn hình đăng nhập
     clearToken();
     window.location.reload();

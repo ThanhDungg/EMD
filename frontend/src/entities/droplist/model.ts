@@ -21,7 +21,12 @@ export type DroplistKey =
   // Chủ đầu tư cha (khai báo master data)
   | 'investorGroup'
   // Nhà thầu (khai báo master data)
-  | 'contractorType';
+  | 'contractorType'
+  // Nhân sự (module Nhân sự & Phân quyền)
+  | 'position'
+  | 'department'
+  | 'userStatus'
+  | 'userLevel';
 
 export type ModuleCode =
   | 'WORKFLOW'
@@ -102,6 +107,26 @@ export const DROPLIST_META: Record<
     module: 'APPLICATIONS',
     description: 'Phân loại nhà thầu (xây lắp, bảo trì, cung cấp thiết bị...)',
   },
+  position: {
+    label: 'Chức vụ',
+    module: 'SYSTEM_ADMIN',
+    description: 'Chức vụ của nhân viên (trưởng phòng, chuyên viên...)',
+  },
+  department: {
+    label: 'Đơn vị',
+    module: 'SYSTEM_ADMIN',
+    description: 'Đơn vị/phòng ban của nhân viên',
+  },
+  userStatus: {
+    label: 'Trạng thái nhân sự',
+    module: 'SYSTEM_ADMIN',
+    description: 'Chính thức, thử việc, sắp nghỉ việc, nghỉ việc',
+  },
+  userLevel: {
+    label: 'Cấp bậc',
+    module: 'SYSTEM_ADMIN',
+    description: 'Cấp bậc của nhân viên',
+  },
 };
 
 export interface DroplistItem {
@@ -139,3 +164,11 @@ export const INVESTOR_DROPLIST_KEYS: DroplistKey[] = ['investorGroup'];
 
 /** Droplist dùng ở danh mục kiểm tra năng lượng. */
 export const ENERGY_DROPLIST_KEYS: DroplistKey[] = ['factory'];
+
+/** Droplist nhân sự trong trang "Danh mục nhân sự". */
+export const HR_DROPLIST_KEYS: DroplistKey[] = [
+  'position',
+  'userLevel',
+  'department',
+  'userStatus',
+];

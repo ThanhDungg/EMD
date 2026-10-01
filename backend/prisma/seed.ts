@@ -35,23 +35,83 @@ async function main() {
   }
   console.log(`Seeded ${SYSTEM_PERMISSIONS.length} permissions.`);
 
-  // 2. Group quản trị viên (gắn quyền ADMIN)
-  const adminPermission = await prisma.permission.findUniqueOrThrow({
-    where: { code: 'ADMIN' },
-  });
-  const adminGroup = await prisma.group.upsert({
-    where: { code: 'ADMINISTRATORS' },
-    update: {
-      name: 'Quản trị viên',
-      permissions: { connect: { id: adminPermission.id } },
-    },
-    create: {
+  // 2. 6 nhóm vai trò chuẩn + quyền + phân hệ được xem.
+  // - ADMIN/CEO: toàn quyền, xem tất cả phân hệ.
+  // - HO: full dự án nhưng không xem Quản trị/ Cấu hình / Portal CĐT.
+  // - Giám sát vùng ~ QLDA nhưng nhiều dự án (gán qua thành viên dự án).
+  // - QLDA: full trong dự án của mình (Quy trình), Ứng dụng chỉ xem.
+  // - Kỹ thuật: chỉ Quy trình (việc được giao) + Chat nội bộ.
+  // Upsert nên chạy lại an toàn (connect M2M đã có thì bỏ qua).
+  const ALL_MODULES = CORE_MODULES.map((m) => m.code);
+  const ROLE_GROUPS: Array<{
+    code: string;
+    name: string;
+    permissionCodes: string[];
+    modules: string[];
+  }> = [
+    {
       code: 'ADMINISTRATORS',
       name: 'Quản trị viên',
-      permissions: { connect: { id: adminPermission.id } },
+      permissionCodes: ['ADMIN'],
+      modules: ALL_MODULES,
     },
-  });
-  console.log(`Ensured admin group #${adminGroup.id}.`);
+    { code: 'CEO', name: 'CEO', permissionCodes: ['CEO'], modules: ALL_MODULES },
+    {
+      code: 'HO',
+      name: 'HO',
+      permissionCodes: ['HO'],
+      modules: ['WORKFLOW', 'APPLICATIONS', 'ASSETS', 'REPORTS', 'INTERNAL_CHAT'],
+    },
+    {
+      code: 'REGION_SUPERVISORS',
+      name: 'Giám sát vùng',
+      permissionCodes: ['REGION_SUPERVISOR'],
+      modules: ['WORKFLOW', 'APPLICATIONS', 'ASSETS', 'REPORTS'],
+    },
+    {
+      code: 'PROJECT_MANAGERS',
+      name: 'Quản lý dự án',
+      permissionCodes: ['PROJECT_MANAGER'],
+      modules: ['WORKFLOW', 'APPLICATIONS', 'ASSETS', 'REPORTS'],
+    },
+    {
+      code: 'TECHNICIANS',
+      name: 'Nhân viên kỹ thuật',
+      permissionCodes: ['TECHNICIAN'],
+      modules: ['WORKFLOW', 'APPLICATIONS', 'REPORTS', 'ASSETS'],
+    },
+  ];
+  const permissionByCode = new Map<string, number>();
+  for (const code of new Set(ROLE_GROUPS.flatMap((g) => g.permissionCodes))) {
+    const perm = await prisma.permission.findUniqueOrThrow({ where: { code } });
+    permissionByCode.set(code, perm.id);
+  }
+  const groupByCode = new Map<string, number>();
+  for (const g of ROLE_GROUPS) {
+    const group = await prisma.group.upsert({
+      where: { code: g.code },
+      update: {
+        name: g.name,
+        permissions: {
+          connect: g.permissionCodes.map((code) => ({
+            id: permissionByCode.get(code) as number,
+          })),
+        },
+      },
+      create: {
+        code: g.code,
+        name: g.name,
+        permissions: {
+          connect: g.permissionCodes.map((code) => ({
+            id: permissionByCode.get(code) as number,
+          })),
+        },
+      },
+    });
+    groupByCode.set(g.code, group.id);
+  }
+  console.log(`Ensured ${ROLE_GROUPS.length} role groups.`);
+  const adminGroup = { id: groupByCode.get('ADMINISTRATORS') as number };
 
   // 3. Tài khoản admin đầu tiên (có là nhân viên, không phải chủ đầu tư)
   const account = process.env.SEED_ADMIN_ACCOUNT ?? 'admin';
@@ -76,18 +136,23 @@ async function main() {
     console.log(`Admin account "${account}" already exists, skipped.`);
   }
 
-  // 4. 8 module core (group admin xem được tất cả)
+  // 4. 8 module core + gán phân hệ được xem cho từng nhóm vai trò.
+  // Dùng `set` (thay vì `connect`) để mapping trong seed là nguồn chân lý:
+  // chạy lại seed sẽ gỡ đúng các phân hệ không còn trong danh sách.
   for (const m of CORE_MODULES) {
+    const viewers = ROLE_GROUPS.filter((g) => g.modules.includes(m.code)).map(
+      (g) => ({ id: groupByCode.get(g.code) as number }),
+    );
     await prisma.module.upsert({
       where: { code: m.code },
       update: {
         vnName: m.vnName,
         engName: m.engName,
-        viewerGroups: { connect: { id: adminGroup.id } },
+        viewerGroups: { set: viewers },
       },
       create: {
         ...m,
-        viewerGroups: { connect: { id: adminGroup.id } },
+        viewerGroups: { connect: viewers },
       },
     });
   }

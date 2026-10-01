@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { toDateOnly } from '../../common/datetime.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { userSiteIds } from '../../common/access.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateContractDto } from './dto/create-contract.dto.js';
 import type { CreateContractDocumentDto } from './dto/contract-document.dto.js';
@@ -32,21 +34,50 @@ const contractInclude = {
 export class ContractsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(includeDeleted = false) {
+  // Hợp đồng gắn với dự án nào thì chỉ người trong dự án đó (và
+  // ADMIN/CEO/HO) được xem. Hợp đồng chưa gắn dự án nào thì ai cũng xem.
+  findAll(includeDeleted = false, scope?: { meId: number; viewAll: boolean }) {
+    return this.findAllScoped(includeDeleted, scope);
+  }
+
+  private async findAllScoped(
+    includeDeleted: boolean,
+    scope: { meId: number; viewAll: boolean } | undefined,
+  ) {
+    let siteFilter: Prisma.ContractWhereInput | undefined;
+    if (scope && !scope.viewAll) {
+      const ids = await userSiteIds(this.prisma, scope.meId);
+      siteFilter = {
+        OR: [
+          { siteLinks: { some: { siteId: { in: ids } } } },
+          { siteLinks: { none: {} } },
+        ],
+      };
+    }
     return this.prisma.contract.findMany({
-      where: includeDeleted ? undefined : { isDeleted: false },
+      where: {
+        ...(includeDeleted ? {} : { isDeleted: false }),
+        ...siteFilter,
+      },
       orderBy: { id: 'desc' },
       include: contractInclude,
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, scope?: { meId: number; viewAll: boolean }) {
     const contract = await this.prisma.contract.findFirst({
       where: { id, isDeleted: false },
       include: contractInclude,
     });
     if (!contract) {
       throw new NotFoundException(`Hợp đồng #${id} không tồn tại.`);
+    }
+    if (scope && !scope.viewAll && contract.siteLinks.length > 0) {
+      const ids = await userSiteIds(this.prisma, scope.meId);
+      const visible = contract.siteLinks.some((l) => ids.includes(l.siteId));
+      if (!visible) {
+        throw new ForbiddenException(`Bạn không có quyền xem hợp đồng #${id}.`);
+      }
     }
     return contract;
   }

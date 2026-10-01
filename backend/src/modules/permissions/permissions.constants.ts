@@ -2,7 +2,7 @@
 // - prisma/seed.ts dùng để nạp quyền mặc định
 // - JwtAuthGuard dùng rank để so thứ bậc
 // Thứ tự (rank cao hơn = quyền lớn hơn):
-// ADMIN > CEO > HO > PROJECT_MANAGER > TECHNICIAN > SECURITY_GUARD > INVESTOR
+// ADMIN > CEO > HO > REGION_SUPERVISOR > PROJECT_MANAGER > TECHNICIAN > SECURITY_GUARD > INVESTOR
 // Đây là quyền theo VAI TRÒ. Quyền chức năng theo module sẽ thêm sau khi
 // bảng quyền được mở rộng.
 export interface SystemPermission {
@@ -15,6 +15,7 @@ export const SYSTEM_PERMISSIONS: SystemPermission[] = [
   { code: 'ADMIN', name: 'Quản trị viên', rank: 100 },
   { code: 'CEO', name: 'CEO', rank: 90 },
   { code: 'HO', name: 'HO', rank: 80 },
+  { code: 'REGION_SUPERVISOR', name: 'Giám sát vùng', rank: 75 },
   { code: 'PROJECT_MANAGER', name: 'Quản lý dự án', rank: 70 },
   { code: 'TECHNICIAN', name: 'Nhân viên kỹ thuật', rank: 60 },
   { code: 'SECURITY_GUARD', name: 'Nhân viên bảo vệ', rank: 50 },

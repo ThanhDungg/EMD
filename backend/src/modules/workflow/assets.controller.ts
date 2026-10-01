@@ -13,6 +13,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { canViewAll } from '../../common/access.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import type { JwtPayload } from '../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import { AssetsExcelService } from './assets-excel.service.js';
 import { AssetsService } from './assets.service.js';
@@ -39,6 +42,7 @@ export class AssetsController {
 
   @Get()
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query('siteId') siteId?: string,
     @Query('locationId') locationId?: string,
     @Query('categoryId') categoryId?: string,
@@ -55,6 +59,7 @@ export class AssetsController {
       conditionId: toInt(conditionId),
       keyword: keyword?.trim() || undefined,
       includeDeleted: includeDeleted === 'true',
+      scope: { meId: user.sub, viewAll: canViewAll(user.permissions) },
     });
   }
 
@@ -105,8 +110,14 @@ export class AssetsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.assetsService.findOne(id);
+  findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.assetsService.findOne(id, {
+      meId: user.sub,
+      viewAll: canViewAll(user.permissions),
+    });
   }
 
   @RequirePermissions('ADMIN')

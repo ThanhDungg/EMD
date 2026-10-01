@@ -11,13 +11,21 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../../common/decorators/current-user.decorator.js';
+import {
+  canViewAll,
+  isTechnicianOnly,
+} from '../../common/access.js';
 import { CreateWorkDto } from './dto/create-work.dto.js';
 import { UpdateWorkDto } from './dto/update-work.dto.js';
 import { WorksService } from './works.service.js';
 import type { WorkScope } from './works.service.js';
 
-function isAdminOf(user: JwtPayload): boolean {
-  return user.permissions.includes('ADMIN');
+// ADMIN/CEO/HO xem toàn bộ; kỹ thuật thuần tuý chỉ thấy việc được giao.
+function accessOf(user: JwtPayload) {
+  return {
+    isAdmin: canViewAll(user.permissions),
+    handledOnly: isTechnicianOnly(user.permissions),
+  };
 }
 
 @Controller('workflow/works')
@@ -50,10 +58,12 @@ export class WorksController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    const { isAdmin, handledOnly } = accessOf(user);
     return this.worksService.findAll({
       scope,
       meId: user.sub,
-      isAdmin: isAdminOf(user),
+      isAdmin,
+      handledOnly,
       categoryId: categoryId !== undefined ? Number(categoryId) : undefined,
       statusId: statusId !== undefined ? Number(statusId) : undefined,
       overdue: overdue === 'true',
@@ -79,13 +89,14 @@ export class WorksController {
     return this.worksService.previewTemplate(
       id,
       count !== undefined ? Number(count) : undefined,
-      { meId: user.sub, isAdmin: isAdminOf(user) },
+      { meId: user.sub, isAdmin: accessOf(user).isAdmin },
     );
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number) {
-    return this.worksService.findOne(id, user.sub, isAdminOf(user));
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.findOne(id, user.sub, isAdmin, handledOnly);
   }
 
   // Timeline lịch sử chuyển trạng thái của 1 work (mới nhất trước).
@@ -95,12 +106,17 @@ export class WorksController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.worksService.history(id, user.sub, isAdminOf(user));
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.history(id, user.sub, isAdmin, handledOnly);
   }
 
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateWorkDto) {
-    return this.worksService.create(dto, user.sub);
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.create(dto, user.sub, {
+      viewAll: isAdmin,
+      handledOnly,
+    });
   }
 
   @Patch(':id')
@@ -109,12 +125,14 @@ export class WorksController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateWorkDto,
   ) {
-    return this.worksService.update(id, dto, user.sub, isAdminOf(user));
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.update(id, dto, user.sub, isAdmin, handledOnly);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number) {
-    return this.worksService.remove(id, user.sub, isAdminOf(user));
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.remove(id, user.sub, isAdmin, handledOnly);
   }
 
   // Mở lại công việc đã xoá mềm (người trong cuộc hoặc ADMIN — service check).
@@ -123,7 +141,8 @@ export class WorksController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.worksService.restore(id, user.sub, isAdminOf(user));
+    const { isAdmin, handledOnly } = accessOf(user);
+    return this.worksService.restore(id, user.sub, isAdmin, handledOnly);
   }
 
   // Sinh ngay các kỳ tới hạn của 1 mẫu (không chờ cron giờ).
@@ -131,7 +150,7 @@ export class WorksController {
   @Post(':id/generate')
   generate(@CurrentUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number) {
     return this.worksService
-      .generateForTemplate(id, new Date(), { meId: user.sub, isAdmin: isAdminOf(user) })
+      .generateForTemplate(id, new Date(), { meId: user.sub, isAdmin: accessOf(user).isAdmin })
       .then((created) => ({ templateId: id, created }));
   }
 }

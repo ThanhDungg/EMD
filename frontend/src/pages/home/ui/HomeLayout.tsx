@@ -5,6 +5,7 @@ import {
   BarChartOutlined,
   BellOutlined,
   HomeOutlined,
+  IdcardOutlined,
   InboxOutlined,
   LayoutOutlined,
   MessageOutlined,
@@ -12,8 +13,10 @@ import {
   SendOutlined,
   SettingOutlined,
   TagsOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   DatabaseOutlined,
@@ -272,6 +275,43 @@ const APPLICATION_MENU: MenuDef[] = APPLICATION_MENU_GROUPS.flatMap((g) =>
   g.items.flatMap((m) => (m.children ? m.children : [m])),
 );
 
+// Module Nhân sự & Phân quyền (/admin): nhân viên, nhóm, tài khoản chủ đầu tư.
+const ADMIN_MENU_GROUPS = [
+  {
+    key: 'group-admin-accounts',
+    label: 'NHÂN SỰ & PHÂN QUYỀN',
+    items: [
+      {
+        key: 'admin:employees',
+        path: '/admin/employees',
+        label: 'Nhân viên',
+        icon: <UserOutlined />,
+      },
+      {
+        key: 'admin:groups',
+        path: '/admin/groups',
+        label: 'Nhóm',
+        icon: <TeamOutlined />,
+      },
+      {
+        key: 'admin:investor-accounts',
+        path: '/admin/investor-accounts',
+        label: 'Tài khoản chủ đầu tư',
+        icon: <IdcardOutlined />,
+      },
+      {
+        key: 'admin:catalogs',
+        path: '/admin/catalogs',
+        label: 'Danh mục nhân sự',
+        icon: <ProfileOutlined />,
+      },
+    ],
+  },
+];
+
+// Dạng phẳng — mục lá của module Nhân sự & Phân quyền.
+const ADMIN_MENU: MenuDef[] = ADMIN_MENU_GROUPS.flatMap((g) => g.items);
+
 // Module chưa có màn hình riêng → 1 mục menu trỏ về màn placeholder.
 const SINGLE_MENU: Record<string, MenuDef> = {
   REPORTS: {
@@ -417,9 +457,25 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     [],
   );
 
+  // Ẩn nhóm "NỘI BỘ IT" với vai trò không phải ADMIN/CEO (HO, QLDA, GSV,
+  // kỹ thuật không thấy Dữ liệu input + Mẫu checklist).
+  // Ẩn toàn bộ menu Nhân sự & Phân quyền với người không quản trị.
+  const canAdminister = useMemo(() => {
+    const codes = me?.permissionCodes ?? [];
+    return codes.includes('ADMIN') || codes.includes('CEO');
+  }, [me]);
+
+  const visibleApplicationGroups = useMemo(
+    () =>
+      canAdminister
+        ? APPLICATION_MENU_GROUPS
+        : APPLICATION_MENU_GROUPS.filter((g) => g.key !== 'group-app-it'),
+    [canAdminister],
+  );
+
   const applicationMenuItems: MenuProps['items'] = useMemo(
     () =>
-      APPLICATION_MENU_GROUPS.map((g) => ({
+      visibleApplicationGroups.map((g) => ({
         key: g.key,
         label: g.label,
         type: 'group' as const,
@@ -436,6 +492,21 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
               }
             : { key: m.key, icon: m.icon, label: m.label },
         ),
+      })),
+    [visibleApplicationGroups],
+  );
+
+  const adminMenuItems: MenuProps['items'] = useMemo(
+    () =>
+      ADMIN_MENU_GROUPS.map((g) => ({
+        key: g.key,
+        label: g.label,
+        type: 'group' as const,
+        children: g.items.map((m) => ({
+          key: m.key,
+          icon: m.icon,
+          label: m.label,
+        })),
       })),
     [],
   );
@@ -454,7 +525,11 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
         ? assetMenuItems
         : activeModule === 'APPLICATIONS'
           ? applicationMenuItems
-          : singleMenuItems;
+          : activeModule === 'SYSTEM_ADMIN'
+            ? canAdminister
+              ? adminMenuItems
+              : [{ key: 'admin:forbidden', label: 'Không có quyền truy cập' }]
+            : singleMenuItems;
 
   const menuTitle =
     modules.find((m) => m.code === activeModule)?.vnName ?? 'Công việc';
@@ -486,8 +561,10 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
           ]
         : activeModule === 'ASSETS'
           ? ASSET_MENU
-          : activeModule === 'APPLICATIONS'
-            ? APPLICATION_MENU
+        : activeModule === 'APPLICATIONS'
+          ? APPLICATION_MENU
+          : activeModule === 'SYSTEM_ADMIN'
+            ? ADMIN_MENU
             : SINGLE_MENU[activeModule]
               ? [SINGLE_MENU[activeModule]]
               : [];
@@ -551,6 +628,7 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     const map = new Map<string, string>();
     for (const m of ASSET_MENU) map.set(m.key, m.path);
     for (const m of APPLICATION_MENU) map.set(m.key, m.path);
+    for (const m of ADMIN_MENU) map.set(m.key, m.path);
     // Mục cha (VD "Dự án") → trang con đầu tiên.
     for (const g of APPLICATION_MENU_GROUPS) {
       for (const m of g.items) {

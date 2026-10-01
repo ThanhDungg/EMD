@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { assertSiteInScope, userSiteIds } from '../../common/access.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type {
   CreateSiteDetailDto,
@@ -29,6 +30,7 @@ export const SITE_DETAIL_KINDS: Record<
 
 const memberSelect = {
   id: true,
+  siteId: true,
   user: {
     select: {
       id: true,
@@ -44,6 +46,7 @@ const memberSelect = {
 
 const partnerSelect = {
   id: true,
+  siteId: true,
   name: true,
   email: true,
   phone: true,
@@ -51,6 +54,7 @@ const partnerSelect = {
 
 const unitSelect = {
   id: true,
+  siteId: true,
   code: true,
   name: true,
   area: true,
@@ -67,7 +71,14 @@ export class SiteDetailsService {
     private readonly sitesService: SitesService,
   ) {}
 
-  findAll(kind: SiteDetailKind, siteId: number): Promise<SiteDetailRow[]> {
+  // Bảng con luôn thuộc 1 dự án: ngoài ADMIN/CEO/HO thì siteId phải nằm
+  // trong phạm vi dự án của user.
+  async findAll(
+    kind: SiteDetailKind,
+    siteId: number,
+    scope?: { meId: number; viewAll: boolean },
+  ): Promise<SiteDetailRow[]> {
+    await this.assertScope(siteId, scope);
     const where = { siteId, isDeleted: false };
     switch (kind) {
       case 'members':
@@ -106,8 +117,15 @@ export class SiteDetailsService {
   async create(
     kind: SiteDetailKind,
     dto: CreateSiteDetailDto,
+    scope?: { meId: number; viewAll: boolean; canCreate?: boolean },
   ): Promise<SiteDetailRow> {
     await this.sitesService.findOne(dto.siteId);
+    if (scope && !scope.viewAll && !scope.canCreate) {
+      throw new ForbiddenException(
+        'Chỉ quản lý dự án, giám sát vùng (trong dự án của mình) hoặc HO mới được thêm thông tin dự án.',
+      );
+    }
+    await this.assertScope(dto.siteId, scope);
     const { siteId, ...rest } = dto;
     // Prisma có 2 biến thể input (checked/unchecked) — ép kiểu 1 lần ở đây.
     const data = { siteId, ...rest } as never;
@@ -140,7 +158,11 @@ export class SiteDetailsService {
     }
   }
 
-  async findOne(kind: SiteDetailKind, id: number): Promise<SiteDetailRow> {
+  async findOne(
+    kind: SiteDetailKind,
+    id: number,
+    scope?: { meId: number; viewAll: boolean },
+  ): Promise<SiteDetailRow> {
     const where = { id, isDeleted: false };
     const row =
       kind === 'members'
@@ -172,7 +194,17 @@ export class SiteDetailsService {
         `${SITE_DETAIL_KINDS[kind].label} #${id} không tồn tại.`,
       );
     }
+    await this.assertScope((row as { siteId: number }).siteId, scope);
     return row as never;
+  }
+
+  private async assertScope(
+    siteId: number,
+    scope: { meId: number; viewAll: boolean } | undefined,
+  ): Promise<void> {
+    if (!scope || scope.viewAll) return;
+    const ids = await userSiteIds(this.prisma, scope.meId);
+    assertSiteInScope(siteId, ids);
   }
 
   async update(

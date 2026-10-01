@@ -6,8 +6,17 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
  * nghiệp vụ — service chỉ lo đọc/ghi dữ liệu.
  */
 
-/** Vai trò của người dùng đối với 1 công việc (tài liệu §4.11). */
-export type WorkRole = 'assigner' | 'handler' | 'follower' | 'outsider' | 'admin';
+/** Vai trò của người dùng đối với 1 công việc (tài liệu §4.11).
+ * 'manager' = quản lý của dự án chứa công việc (QLDA/GSV): full quyền trong
+ * module Quy trình với việc thuộc dự án mình, kể cả khi không trực tiếp
+ * giao/nhận/theo dõi việc đó. */
+export type WorkRole =
+  | 'assigner'
+  | 'handler'
+  | 'follower'
+  | 'manager'
+  | 'outsider'
+  | 'admin';
 
 export interface WorkRelation {
   assignerId: number;
@@ -15,27 +24,35 @@ export interface WorkRelation {
   followerIds: number[];
 }
 
-/** Xác định vai trò: admin ưu tiên, sau đó người giao > người thực hiện > người theo dõi. */
+/** Xác định vai trò: admin ưu tiên, sau đó người giao > người thực hiện > người theo dõi.
+ * managesSite = user là quản lý/thành viên của dự án chứa việc (QLDA/GSV). */
 export function roleOf(
   work: WorkRelation,
   meId: number,
   isAdmin = false,
+  managesSite = false,
 ): WorkRole {
   if (isAdmin) return 'admin';
   if (work.assignerId === meId) return 'assigner';
   if (work.handlerIds.includes(meId)) return 'handler';
   if (work.followerIds.includes(meId)) return 'follower';
+  if (managesSite) return 'manager';
   return 'outsider';
 }
 
-/** Xem: người theo dõi/phối hợp cũng được xem. */
+/** Xem: người theo dõi/phối hợp và quản lý dự án cũng được xem. */
 export function canViewWork(role: WorkRole): boolean {
   return role !== 'outsider';
 }
 
-/** Sửa + đổi trạng thái: chỉ người giao / người thực hiện / admin. */
+/** Sửa + đổi trạng thái: người giao / người thực hiện / quản lý dự án / admin. */
 export function canEditWork(role: WorkRole): boolean {
-  return role === 'assigner' || role === 'handler' || role === 'admin';
+  return (
+    role === 'assigner' ||
+    role === 'handler' ||
+    role === 'manager' ||
+    role === 'admin'
+  );
 }
 
 /**
@@ -54,7 +71,9 @@ export function assertCanView(role: WorkRole): void {
 
 export function assertCanEdit(role: WorkRole): void {
   if (!canEditWork(role)) {
-    throw new ForbiddenException('Chỉ người giao, người thực hiện hoặc ADMIN được sửa.');
+    throw new ForbiddenException(
+      'Chỉ người giao, người thực hiện, quản lý dự án hoặc ADMIN được sửa.',
+    );
   }
 }
 
