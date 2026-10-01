@@ -17,12 +17,20 @@ import {
   fetchWorkHistories,
   fetchWorks,
   fetchWorksPage,
+  importChecklistCategoryFromFile,
+  importStepCategoriesFromFile,
+  importStepChildrenFromFile,
+  importStepParentsFromFile,
   restoreWork,
   saveIncidentDetail,
   updateChecklistItem,
   updateWork,
 } from './api';
 import type {
+  ChecklistCategoryImportResult,
+  StepCategoriesImportResult,
+  StepChildrenImportResult,
+  StepParentsImportResult,
   CreateChecklistItemPayload,
   CreateWorkPayload,
   FetchWorksParams,
@@ -220,6 +228,55 @@ export function useDeleteChecklistItem() {
     onSuccess: invalidate,
   });
 }
+
+/**
+ * Nhập mẫu checklist 3 bước từ file .xlsx (B1 danh mục, B2 cha, B3 con).
+ * Thành công thì làm mới thư viện mẫu. Lỗi ném ra có danh sách lỗi theo
+ * dòng — xử lý ở UI (ExcelImportModal).
+ */
+export function useImportStepCategories() {
+  const invalidate = useInvalidateChecklistTemplates();
+  return useMutation({
+    mutationFn: (file: File) => importStepCategoriesFromFile(file),
+    onSuccess: invalidate,
+  });
+}
+
+export function useImportStepParents() {
+  const invalidate = useInvalidateChecklistTemplates();
+  return useMutation({
+    mutationFn: (file: File) => importStepParentsFromFile(file),
+    onSuccess: invalidate,
+  });
+}
+
+export function useImportStepChildren() {
+  const invalidate = useInvalidateChecklistTemplates();
+  return useMutation({
+    mutationFn: (file: File) => importStepChildrenFromFile(file),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Nhập cả nội dung cha + con từ file .xlsx vào 1 danh mục.
+ * Thành công thì làm mới thư viện mẫu.
+ */
+export function useImportChecklistCategory() {
+  const invalidate = useInvalidateChecklistTemplates();
+  return useMutation({
+    mutationFn: ({ categoryId, file }: { categoryId: number; file: File }) =>
+      importChecklistCategoryFromFile(categoryId, file),
+    onSuccess: invalidate,
+  });
+}
+
+export type {
+  ChecklistCategoryImportResult,
+  StepCategoriesImportResult,
+  StepChildrenImportResult,
+  StepParentsImportResult,
+};
 
 export function useCreateWork() {
   const queryClient = useQueryClient();

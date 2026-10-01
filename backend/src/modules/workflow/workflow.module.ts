@@ -15,6 +15,7 @@ import { AssetsController } from './assets.controller.js';
 import { AssetsExcelService } from './assets-excel.service.js';
 import { AssetsService } from './assets.service.js';
 import { ChecklistController } from './checklist.controller.js';
+import { ChecklistExcelService } from './checklist-excel.service.js';
 import { ChecklistService } from './checklist.service.js';
 import { CompanyProfileController } from './company-profile.controller.js';
 import { CompanyProfileService } from './company-profile.service.js';
@@ -97,6 +98,7 @@ import { WorksService } from './works.service.js';
     WorkflowTasksService,
     WorksService,
     ChecklistService,
+    ChecklistExcelService,
     EnergyChecksService,
     EnergyMetersService,
     IncidentDetailsService,

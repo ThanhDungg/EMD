@@ -10,9 +10,17 @@
 // Tên · Tiêu chuẩn kiểm tra · Loại giá trị · Số lượng; các field thực thi
 // (giá trị, trạng thái Đạt/Không đạt, ảnh, ghi chú) để rỗng, nhập lúc đi
 // kiểm tra.
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  CloudUploadOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  DownOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import {
   Button,
+  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -30,11 +38,16 @@ import {
   useCreateChecklistItem,
   useDeleteChecklistItem,
   useUpdateChecklistItem,
+  downloadChecklistCategoryExport,
+  downloadChecklistExport,
 } from '@/entities/work';
 import type { ChecklistTreeNode } from '@/entities/work';
-import { apiErrorMessage } from '@/shared/lib';
+import { apiErrorMessage, downloadBlob } from '@/shared/lib';
 import { BodyCard, EllipsisText, Table } from '@/shared/ui';
 import type { ColumnsType } from '@/shared/ui';
+import { ChecklistTemplateCategoryImportModal } from './ChecklistTemplateCategoryImportModal';
+import type { ChecklistStepKind } from './ChecklistStepImportModal';
+import { ChecklistStepImportModal } from './ChecklistStepImportModal';
 
 const { Text } = Typography;
 
@@ -107,6 +120,41 @@ export function ChecklistTemplatePage() {
   const updateMutation = useUpdateChecklistItem();
   const deleteMutation = useDeleteChecklistItem();
   const saving = createMutation.isPending || updateMutation.isPending;
+
+  const [exporting, setExporting] = useState(false);
+
+  // Nhập Excel 3 bước ở card Danh mục: B1 danh mục → B2 cha → B3 con.
+  const [stepImport, setStepImport] =
+    useState<ChecklistStepKind | null>(null);
+
+  // Nhập/xuất Excel cả cha + con cho danh mục đang chọn (card Nội dung).
+  const [categoryImportOpen, setCategoryImportOpen] = useState(false);
+  const [exportingCategory, setExportingCategory] = useState(false);
+
+  async function handleExportCategory() {
+    if (categoryId === undefined) return;
+    setExportingCategory(true);
+    try {
+      const blob = await downloadChecklistCategoryExport(categoryId);
+      downloadBlob(blob, `danh-muc-checklist-${categoryId}.xlsx`);
+    } catch (err) {
+      messageApi.error(apiErrorMessage(err, 'Xuất Excel thất bại.'));
+    } finally {
+      setExportingCategory(false);
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await downloadChecklistExport();
+      downloadBlob(blob, 'mau-checklist.xlsx');
+    } catch (err) {
+      messageApi.error(apiErrorMessage(err, 'Xuất Excel thất bại.'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const selected = categories.find((c) => c.id === categoryId) ?? null;
 
@@ -511,19 +559,54 @@ export function ChecklistTemplatePage() {
         title="Danh mục mẫu checklist"
         style={{ marginBottom: 16 }}
         extra={
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={openCreateCategory}
-          >
-            Thêm danh mục
-          </Button>
+          <Space>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'categories',
+                    label: 'B1 — Nhập danh mục',
+                  },
+                  {
+                    key: 'parents',
+                    label: 'B2 — Nhập nội dung cha',
+                  },
+                  {
+                    key: 'children',
+                    label: 'B3 — Nhập nội dung con',
+                  },
+                ],
+                onClick: ({ key }) =>
+                  setStepImport(key as ChecklistStepKind),
+              }}
+            >
+              <Button size="small" icon={<CloudUploadOutlined />}>
+                Nhập Excel <DownOutlined />
+              </Button>
+            </Dropdown>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              loading={exporting}
+              onClick={handleExport}
+            >
+              Xuất Excel
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={openCreateCategory}
+            >
+              Thêm danh mục
+            </Button>
+          </Space>
         }
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-          Mẫu là bộ tiêu chí dùng sẵn cho công việc loại Checklist. Tạo danh mục
-          ở đây, chọn danh mục bên dưới để nhập nội dung.
+          Mẫu là bộ tiêu chí dùng sẵn cho công việc loại Checklist. Nhập hàng
+          loạt từ file theo 3 bước: B1 nhập hết danh mục → B2 nhập nội dung cha
+          của các danh mục → B3 nhập nội dung con của các nội dung cha.
         </Text>
         <Table<ChecklistTreeNode>
           columns={categoryColumns}
@@ -561,6 +644,21 @@ export function ChecklistTemplatePage() {
                 onChange={setCategoryId}
               />
               <Button
+                size="small"
+                icon={<CloudUploadOutlined />}
+                onClick={() => setCategoryImportOpen(true)}
+              >
+                Nhập Excel
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                loading={exportingCategory}
+                onClick={handleExportCategory}
+              >
+                Xuất Excel
+              </Button>
+              <Button
                 type="primary"
                 size="small"
                 icon={<PlusOutlined />}
@@ -572,8 +670,8 @@ export function ChecklistTemplatePage() {
           }
         >
           <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-            Bấm mũi tên ▸ ở nội dung cha để xem các nội dung con. Nội dung con
-            chỉ là nhập dữ liệu, không có nội dung con nữa.
+            Bấm mũi tên ▸ ở nội dung cha để xem các nội dung con — hoặc bấm
+            “Nhập Excel” để nhập cả nội dung cha lẫn con từ file.
           </Text>
           <Table<ChecklistTreeNode>
             columns={parentColumns}
@@ -720,6 +818,16 @@ export function ChecklistTemplatePage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <ChecklistStepImportModal
+        step={stepImport}
+        onClose={() => setStepImport(null)}
+      />
+
+      <ChecklistTemplateCategoryImportModal
+        category={categoryImportOpen ? selected : null}
+        onClose={() => setCategoryImportOpen(false)}
+      />
     </>
   );
 }

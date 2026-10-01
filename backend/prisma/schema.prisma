@@ -85,6 +85,10 @@ model User {
   handledWorks  WorkHandler[]
   followedWorks Work[]        @relation("WorkFollowers")
 
+  // --- Báo cáo tự phục vụ: dashboard tôi sở hữu / được chia sẻ ---
+  ownedDashboards  ReportDashboard[] @relation("ReportDashboardOwner")
+  sharedDashboards ReportDashboard[] @relation("ReportDashboardSharedUsers")
+
   // --- Lịch sử chuyển trạng thái do user thực hiện ---
   statusHistoryChanges WorkStatusHistory[] @relation("HistoryChangedBy")
 
@@ -1502,6 +1506,8 @@ model Group {
   permissions     Permission[]
   // Phân hệ mà group này được xem
   viewableModules Module[]     @relation("ModuleViewerGroups")
+  // Dashboard báo cáo được chia sẻ cho nhóm
+  sharedDashboards ReportDashboard[] @relation("ReportDashboardSharedGroups")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1547,4 +1553,48 @@ model Module {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("modules")
+}
+
+// ================= Báo cáo tự phục vụ (kiểu Power BI) =================
+// Dashboard đi theo người dùng: owner tạo + sở hữu, chia sẻ xem cho user
+// hoặc nhóm khác. Mỗi biểu đồ mang bộ lọc riêng (filters) đi theo nó.
+model ReportDashboard {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String? @db.Text
+  ownerId     Int     @map("owner_id")
+  owner       User    @relation("ReportDashboardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  isDeleted   Boolean @default(false) @map("is_deleted")
+  charts      ReportChart[]
+  sharedUsers  User[]  @relation("ReportDashboardSharedUsers")
+  sharedGroups Group[] @relation("ReportDashboardSharedGroups")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("report_dashboards")
+}
+
+model ReportChart {
+  id          Int             @id @default(autoincrement())
+  dashboardId Int             @map("dashboard_id")
+  dashboard   ReportDashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  title       String
+  // KPI | BAR | PIE | LINE | TABLE | MAP
+  chartType String @map("chart_type")
+  // works | checklist | assets | sites | incidents | energy | contracts
+  dataset String
+  // count | sum_total (năng lượng)
+  metric String @default("count")
+  // Tên chiều gom nhóm (status, category, result...) — null = không gom (KPI)
+  dimension String?
+  // Bộ lọc riêng của biểu đồ: { from, to, siteId, categoryId, statusId, ... }
+  filters   Json?
+  sortOrder Int     @default(0) @map("sort_order")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("report_charts")
 }

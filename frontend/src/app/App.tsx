@@ -41,6 +41,7 @@ import {
   ScopeWorksPage,
 } from '@/pages/home';
 import { ModulePlaceholderPage } from '@/pages/placeholder';
+import { ReportListPage, ReportViewerPage } from '@/pages/report';
 import { WorkDetailPage } from '@/pages/work-detail';
 import { LoginPage } from '@/pages/login';
 import { apiClient } from '@/shared/api';
@@ -153,17 +154,12 @@ function Shell() {
           <Route path="droplists" element={<AssetDroplistPage />} />
         </Route>
 
-        {/* Module chưa phát triển */}
+        {/* Báo cáo tự phục vụ: bảng đi theo người dùng, biểu đồ mang bộ lọc riêng */}
         <Route path="/report" element={<HomePage onLogout={handleLogout} />}>
-          <Route
-            index
-            element={
-              <ModulePlaceholderPage
-                moduleName="Báo cáo"
-                description="Các báo cáo tổng hợp theo dự án, tài sản và sự cố sẽ có ở đây."
-              />
-            }
-          />
+          <Route index element={<ReportListPage />} />
+          {/* Menu "Báo cáo": chọn bản báo cáo ở trái, xem biểu đồ ở phải. */}
+          <Route path="view" element={<ReportViewerPage />} />
+          <Route path="view/:id" element={<ReportViewerPage />} />
         </Route>
         <Route path="/admin" element={<HomePage onLogout={handleLogout} />}>
           <Route index element={<Navigate to="employees" replace />} />

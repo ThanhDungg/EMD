@@ -1,5 +1,6 @@
 // entities/work/api — API công việc dùng chung (list + detail).
-import { apiClient } from '@/shared/api';
+import { apiClient, fetchBlob } from '@/shared/api';
+import { parseImportError } from '@/entities/asset/api';
 import { getToken } from '@/shared/auth';
 import type {
   ChecklistResult,
@@ -344,6 +345,151 @@ export async function deleteChecklistItem(
     `/workflow/checklists/${id}`,
     token(),
   );
+}
+
+// ---------------- Nhập mẫu checklist 3 bước bằng Excel ----------------
+// B1 danh mục → B2 nội dung cha → B3 nội dung con. Mỗi bước 1 file, nhập
+// nhiều dòng cùng lúc; bước sau liên kết bước trước bằng tên.
+
+export interface StepCategoriesImportResult {
+  total: number;
+  created: number;
+  updated: number;
+}
+
+export interface StepParentsImportResult {
+  total: number;
+  categories: number;
+  created: number;
+  updated: number;
+}
+
+export interface StepChildrenImportResult {
+  total: number;
+  categories: number;
+  parents: number;
+  created: number;
+  updated: number;
+}
+
+/** Tải file mẫu .xlsx bước 1 (danh mục). */
+export async function downloadStepCategoriesTemplate(): Promise<Blob> {
+  return fetchBlob('/workflow/checklists/import/categories/template', token());
+}
+
+/** Xuất danh sách danh mục ra .xlsx (nhập lại ở B1 được ngay). */
+export async function downloadStepCategoriesExport(): Promise<Blob> {
+  return fetchBlob('/workflow/checklists/export/categories', token());
+}
+
+/** B1: nhập nhiều danh mục từ file .xlsx. */
+export async function importStepCategoriesFromFile(
+  file: File,
+): Promise<StepCategoriesImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    return await apiClient.upload<StepCategoriesImportResult>(
+      '/workflow/checklists/import/categories',
+      form,
+      token(),
+    );
+  } catch (error) {
+    throw parseImportError(error);
+  }
+}
+
+/** Tải file mẫu .xlsx bước 2 (nội dung cha, có dropdown danh mục). */
+export async function downloadStepParentsTemplate(): Promise<Blob> {
+  return fetchBlob('/workflow/checklists/import/parents/template', token());
+}
+
+/** B2: nhập nhiều nội dung cha từ file .xlsx (danh mục phải có ở B1). */
+export async function importStepParentsFromFile(
+  file: File,
+): Promise<StepParentsImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    return await apiClient.upload<StepParentsImportResult>(
+      '/workflow/checklists/import/parents',
+      form,
+      token(),
+    );
+  } catch (error) {
+    throw parseImportError(error);
+  }
+}
+
+/** Tải file mẫu .xlsx bước 3 (nội dung con). */
+export async function downloadStepChildrenTemplate(): Promise<Blob> {
+  return fetchBlob('/workflow/checklists/import/children/template', token());
+}
+
+/** B3: nhập nhiều nội dung con từ file .xlsx (cha phải có ở B2). */
+export async function importStepChildrenFromFile(
+  file: File,
+): Promise<StepChildrenImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    return await apiClient.upload<StepChildrenImportResult>(
+      '/workflow/checklists/import/children',
+      form,
+      token(),
+    );
+  } catch (error) {
+    throw parseImportError(error);
+  }
+}
+
+/** Xuất toàn bộ mẫu checklist ra .xlsx đủ 3 cấp (đối chiếu/sao lưu). */
+export async function downloadChecklistExport(): Promise<Blob> {
+  return fetchBlob('/workflow/checklists/export', token());
+}
+
+// ---------------- Nhập cha + con theo danh mục ----------------
+
+export interface ChecklistCategoryImportResult {
+  total: number;
+  parents: number;
+  created: number;
+  updated: number;
+}
+
+/** Tải file mẫu .xlsx nhập cha + con cho 1 danh mục (không cần cột Danh mục). */
+export async function downloadChecklistCategoryTemplate(
+  categoryId: number,
+): Promise<Blob> {
+  return fetchBlob(
+    `/workflow/checklists/${categoryId}/import/template`,
+    token(),
+  );
+}
+
+/** Xuất cả cha + con của 1 danh mục ra .xlsx (nhập lại được ngay). */
+export async function downloadChecklistCategoryExport(
+  categoryId: number,
+): Promise<Blob> {
+  return fetchBlob(`/workflow/checklists/${categoryId}/export`, token());
+}
+
+/** Nhập cả cha + con từ file .xlsx vào 1 danh mục. */
+export async function importChecklistCategoryFromFile(
+  categoryId: number,
+  file: File,
+): Promise<ChecklistCategoryImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    return await apiClient.upload<ChecklistCategoryImportResult>(
+      `/workflow/checklists/${categoryId}/import`,
+      form,
+      token(),
+    );
+  } catch (error) {
+    throw parseImportError(error);
+  }
 }
 
 // Chi tiết kiểm tra năng lượng (GET /workflow/energy-checks?workId=).

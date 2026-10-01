@@ -101,6 +101,23 @@ interface MenuDef {
   children?: MenuDef[];
 }
 
+// Menu Báo cáo: 2 mục — khai báo/quản lý danh mục bản báo cáo của mình, và
+// mở màn xem các biểu đồ.
+const REPORT_MENU: MenuDef[] = [
+  {
+    key: 'report:catalog',
+    path: '/report',
+    label: 'Danh mục bản báo cáo',
+    icon: <ProfileOutlined />,
+  },
+  {
+    key: 'report:view',
+    path: '/report/view',
+    label: 'Báo cáo',
+    icon: <BarChartOutlined />,
+  },
+];
+
 const ASSET_MENU: MenuDef[] = [
   {
     key: 'assets:list',
@@ -314,12 +331,6 @@ const ADMIN_MENU: MenuDef[] = ADMIN_MENU_GROUPS.flatMap((g) => g.items);
 
 // Module chưa có màn hình riêng → 1 mục menu trỏ về màn placeholder.
 const SINGLE_MENU: Record<string, MenuDef> = {
-  REPORTS: {
-    key: 'report:index',
-    path: '/report',
-    label: 'Báo cáo',
-    icon: <BarChartOutlined />,
-  },
   SYSTEM_ADMIN: {
     key: 'admin:index',
     path: '/admin',
@@ -517,6 +528,16 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     return [{ key: def.key, icon: def.icon, label: def.label }];
   }, [activeModule]);
 
+  const reportMenuItems: MenuProps['items'] = useMemo(
+    () =>
+      REPORT_MENU.map((m) => ({
+        key: m.key,
+        icon: m.icon,
+        label: m.label,
+      })),
+    [],
+  );
+
   // Menu trái theo module đang chọn.
   const menuItems: MenuProps['items'] =
     activeModule === 'WORKFLOW'
@@ -525,11 +546,13 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
         ? assetMenuItems
         : activeModule === 'APPLICATIONS'
           ? applicationMenuItems
-          : activeModule === 'SYSTEM_ADMIN'
-            ? canAdminister
-              ? adminMenuItems
-              : [{ key: 'admin:forbidden', label: 'Không có quyền truy cập' }]
-            : singleMenuItems;
+          : activeModule === 'REPORTS'
+            ? reportMenuItems
+            : activeModule === 'SYSTEM_ADMIN'
+              ? canAdminister
+                ? adminMenuItems
+                : [{ key: 'admin:forbidden', label: 'Không có quyền truy cập' }]
+              : singleMenuItems;
 
   const menuTitle =
     modules.find((m) => m.code === activeModule)?.vnName ?? 'Công việc';
@@ -563,13 +586,19 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
           ? ASSET_MENU
         : activeModule === 'APPLICATIONS'
           ? APPLICATION_MENU
-          : activeModule === 'SYSTEM_ADMIN'
-            ? ADMIN_MENU
-            : SINGLE_MENU[activeModule]
-              ? [SINGLE_MENU[activeModule]]
-              : [];
+          : activeModule === 'REPORTS'
+            ? REPORT_MENU
+            : activeModule === 'SYSTEM_ADMIN'
+              ? ADMIN_MENU
+              : SINGLE_MENU[activeModule]
+                ? [SINGLE_MENU[activeModule]]
+                : [];
     const matched = defs.find((m) => m.path === pathname);
     if (matched) return matched.key;
+    // Màn xem biểu đồ của 1 bản báo cáo (/report/view/:id) → highlight mục Báo cáo.
+    if (activeModule === 'REPORTS' && /^\/report\/view\/\d+$/.test(pathname)) {
+      return 'report:view';
+    }
     if (
       activeModule === 'APPLICATIONS' &&
       /^\/app\/projects\/\d+$/.test(pathname)
@@ -629,6 +658,7 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     for (const m of ASSET_MENU) map.set(m.key, m.path);
     for (const m of APPLICATION_MENU) map.set(m.key, m.path);
     for (const m of ADMIN_MENU) map.set(m.key, m.path);
+    for (const m of REPORT_MENU) map.set(m.key, m.path);
     // Mục cha (VD "Dự án") → trang con đầu tiên.
     for (const g of APPLICATION_MENU_GROUPS) {
       for (const m of g.items) {
