@@ -1,0 +1,11 @@
+.report-chart-canvas { width: 100%; }
+.report-chart-empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8c8c8c;
+}
+.report-kpi { padding: 12px 4px; }
+.report-kpi-value { font-size: 38px; font-weight: 700; line-height: 1.1; }
+.report-kpi-sub { color: #8c8c8c; margin-top: 4px; }

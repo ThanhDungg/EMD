@@ -4,6 +4,8 @@ import {
   BankOutlined,
   BarChartOutlined,
   BellOutlined,
+  CompassOutlined,
+  DashboardOutlined,
   HomeOutlined,
   IdcardOutlined,
   InboxOutlined,
@@ -30,6 +32,7 @@ import { Avatar, Badge, Button, Dropdown, Menu, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useReportPresets } from '@/entities/report';
 import { useDirectory, useSites, useWorksPage } from '@/entities/work';
 import type { DirectoryUser, SiteItem } from '@/entities/work';
 import type {
@@ -312,14 +315,41 @@ const ADMIN_MENU_GROUPS = [
 // Dạng phẳng — mục lá của module Nhân sự & Phân quyền.
 const ADMIN_MENU: MenuDef[] = ADMIN_MENU_GROUPS.flatMap((g) => g.items);
 
-// Module chưa có màn hình riêng → 1 mục menu trỏ về màn placeholder.
-const SINGLE_MENU: Record<string, MenuDef> = {
-  REPORTS: {
-    key: 'report:index',
+// Menu module Báo cáo (/report): Tổng quan · Khám phá & tự custom · Bảng của tôi.
+/**
+ * Menu module Báo cáo: 3 NHÓM BÁO CÁO CHA (mỗi nhóm có các báo cáo con) + 2 mục
+ * dựng nhanh. Danh sách nhóm/báo cáo con lấy từ API /reports/presets (server
+ * khai báo 1 chỗ — report-presets.ts) nên không phải khai báo lại ở FE.
+ */
+const REPORT_GROUP_PREFIX: Record<string, string> = {
+  daily: '/report/daily',
+  activity: '/report/activity',
+  summary: '/report/summary',
+};
+
+const REPORT_MENU_TOP: MenuDef[] = [
+  {
+    key: 'report:overview',
     path: '/report',
-    label: 'Báo cáo',
+    label: 'Tổng quan',
+    icon: <DashboardOutlined />,
+  },
+  {
+    key: 'report:explorer',
+    path: '/report/explorer',
+    label: 'Khám phá & tự custom',
+    icon: <CompassOutlined />,
+  },
+  {
+    key: 'report:boards',
+    path: '/report/boards',
+    label: 'Bảng của tôi',
     icon: <BarChartOutlined />,
   },
+];
+
+// Module chưa có màn hình riêng → 1 mục menu trỏ về màn placeholder.
+const SINGLE_MENU: Record<string, MenuDef> = {
   SYSTEM_ADMIN: {
     key: 'admin:index',
     path: '/admin',
@@ -362,6 +392,8 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
   const { data: profile, isLoading: profileLoading } = useCompanyProfile();
   const { data: sites = [] } = useSites();
   const { data: directory = [] } = useDirectory();
+  // Danh mục báo cáo cha/con cho menu module Báo cáo (API /reports/presets).
+  const { data: presets } = useReportPresets();
   // Tổng Tôi giao/thực hiện chỉ lấy total (limit 1) cho badge menu.
   const assignedTotalParams = useMemo(
     () => ({ scope: 'assigned' as const, limit: 1 }),
@@ -511,6 +543,42 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     [],
   );
 
+  // Nhóm báo cáo cha + báo cáo con (dựng từ API /reports/presets).
+  const reportGroups = useMemo(() => {
+    const groups = (presets?.groups ?? []).map((g) => ({
+      key: `report-group-${g.key}`,
+      label: g.label.toUpperCase(),
+      prefix: REPORT_GROUP_PREFIX[g.key] ?? `/report/${g.key}`,
+      items: g.items.map((i) => ({
+        key: `report:${i.key}`,
+        label: i.title,
+        path: `${REPORT_GROUP_PREFIX[g.key] ?? `/report/${g.key}`}/${i.key}`,
+      })),
+    }));
+    return groups;
+  }, [presets]);
+
+  const reportMenuItems: MenuProps['items'] = useMemo(
+    () => [
+      ...REPORT_MENU_TOP.map((m) => ({
+        key: m.key,
+        icon: m.icon,
+        label: m.label,
+      })),
+      { type: 'divider' as const },
+      ...reportGroups.map((g) => ({
+        key: g.key,
+        label: g.label,
+        type: 'group' as const,
+        children: g.items.map((i) => ({
+          key: i.key,
+          label: i.label,
+        })),
+      })),
+    ],
+    [reportGroups],
+  );
+
   const singleMenuItems: MenuProps['items'] = useMemo(() => {
     const def = SINGLE_MENU[activeModule];
     if (!def) return [];
@@ -525,11 +593,13 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
         ? assetMenuItems
         : activeModule === 'APPLICATIONS'
           ? applicationMenuItems
-          : activeModule === 'SYSTEM_ADMIN'
-            ? canAdminister
-              ? adminMenuItems
-              : [{ key: 'admin:forbidden', label: 'Không có quyền truy cập' }]
-            : singleMenuItems;
+          : activeModule === 'REPORTS'
+            ? reportMenuItems
+            : activeModule === 'SYSTEM_ADMIN'
+              ? canAdminister
+                ? adminMenuItems
+                : [{ key: 'admin:forbidden', label: 'Không có quyền truy cập' }]
+              : singleMenuItems;
 
   const menuTitle =
     modules.find((m) => m.code === activeModule)?.vnName ?? 'Công việc';
@@ -563,11 +633,23 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
           ? ASSET_MENU
         : activeModule === 'APPLICATIONS'
           ? APPLICATION_MENU
-          : activeModule === 'SYSTEM_ADMIN'
-            ? ADMIN_MENU
-            : SINGLE_MENU[activeModule]
-              ? [SINGLE_MENU[activeModule]]
-              : [];
+          : activeModule === 'REPORTS'
+            ? [
+                ...REPORT_MENU_TOP,
+                ...reportGroups.flatMap((g) =>
+                  g.items.map((i) => ({
+                    key: i.key,
+                    path: i.path,
+                    label: '',
+                    icon: null,
+                  })),
+                ),
+              ]
+            : activeModule === 'SYSTEM_ADMIN'
+              ? ADMIN_MENU
+              : SINGLE_MENU[activeModule]
+                ? [SINGLE_MENU[activeModule]]
+                : [];
     const matched = defs.find((m) => m.path === pathname);
     if (matched) return matched.key;
     if (
@@ -575,6 +657,10 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
       /^\/app\/projects\/\d+$/.test(pathname)
     ) {
       return 'app:projects-list';
+    }
+    // Trang chi tiết tài sản (mở từ tem QR) vẫn thuộc menu Danh sách tài sản.
+    if (activeModule === 'ASSETS' && /^\/assets\/\d+$/.test(pathname)) {
+      return 'assets:list';
     }
     if (
       activeModule === 'APPLICATIONS' &&
@@ -608,20 +694,24 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
           : 'work:home';
     }
     return defs[0]?.key ?? '';
-  }, [activeModule, categories, lastWorkPath, pathname]);
+  }, [activeModule, categories, lastWorkPath, pathname, reportGroups]);
 
   // Mở mục cha khi đang ở 1 trang con của mục đó (VD vào /app/project-droplists
-  // thì "Dự án" tự mở).
+  // thì "Dự án" tự mở; vào /report/daily/x thì nhóm "Báo cáo hằng ngày" mở).
   useEffect(() => {
     if (!selectedKey) return;
     const parent = APPLICATION_MENU_GROUPS.flatMap((g) => g.items).find((m) =>
       m.children?.some((c) => c.key === selectedKey),
     );
-    if (!parent) return;
-    setOpenMenuKeys((keys) =>
-      keys.includes(parent.key) ? keys : [...keys, parent.key],
+    const reportGroup = reportGroups.find((g) =>
+      g.items.some((i) => i.key === selectedKey),
     );
-  }, [selectedKey]);
+    const parentKey = parent?.key ?? reportGroup?.key;
+    if (!parentKey) return;
+    setOpenMenuKeys((keys) =>
+      keys.includes(parentKey) ? keys : [...keys, parentKey],
+    );
+  }, [selectedKey, reportGroups]);
 
   // key menu -> path để navigate
   const pathByKey = useMemo(() => {
@@ -629,6 +719,11 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
     for (const m of ASSET_MENU) map.set(m.key, m.path);
     for (const m of APPLICATION_MENU) map.set(m.key, m.path);
     for (const m of ADMIN_MENU) map.set(m.key, m.path);
+    for (const m of REPORT_MENU_TOP) map.set(m.key, m.path);
+    for (const g of reportGroups) {
+      for (const i of g.items) map.set(i.key, i.path);
+      if (g.items[0]) map.set(g.key, g.items[0].path);
+    }
     // Mục cha (VD "Dự án") → trang con đầu tiên.
     for (const g of APPLICATION_MENU_GROUPS) {
       for (const m of g.items) {
@@ -643,7 +738,7 @@ export function HomeLayout({ onLogout }: HomeLayoutProps) {
       map.set(`work:category:${c.id}`, `/work/categories/${c.id}`);
     }
     return map;
-  }, [categories]);
+  }, [categories, reportGroups]);
 
   const displayName = me?.fullName?.trim() || me?.accountName || 'Người dùng';
   const avatarLetter = (displayName.charAt(0) || 'U').toUpperCase();

@@ -5,7 +5,9 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  EyeOutlined,
   PlusOutlined,
+  QrcodeOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import {
@@ -19,6 +21,7 @@ import {
   message,
 } from 'antd';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   downloadAssetExport,
   useAssets,
@@ -37,6 +40,7 @@ import { BodyCard, EllipsisText, Table, Tag } from '@/shared/ui';
 import type { ColumnsType } from '@/shared/ui';
 import { AssetFormModal } from './AssetFormModal';
 import { AssetImportModal } from './AssetImportModal';
+import { AssetQrModal } from './AssetQrModal';
 
 const { Text } = Typography;
 
@@ -54,6 +58,7 @@ const CONDITION_STATUS: Record<
 
 export function AssetListPage() {
   const [messageApi, contextHolder] = message.useMessage();
+  const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [locationId, setLocationId] = useState<number | undefined>(undefined);
@@ -66,6 +71,8 @@ export function AssetListPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [qrAssets, setQrAssets] = useState<AssetItem[]>([]);
+  const [qrBatch, setQrBatch] = useState(false);
 
   const { data: sites = [] } = useSites();
   const { data: locations = [] } = useSiteLocations(siteId);
@@ -253,10 +260,28 @@ export function AssetListPage() {
     {
       title: 'Thao tác',
       key: 'actions',
-      width: 100,
+      width: 190,
       fixed: 'right',
       render: (_, a) => (
         <Space>
+          <Tooltip title="Xem chi tiết (quét QR cũng mở trang này)">
+            <Button
+              type="text"
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/assets/${a.id}`)}
+              aria-label="Xem chi tiết tài sản"
+            />
+          </Tooltip>
+          <Button
+            type="text"
+            icon={<QrcodeOutlined />}
+            onClick={() => {
+              setQrAssets([a]);
+              setQrBatch(false);
+            }}
+          >
+            QR
+          </Button>
           <Tooltip title="Sửa tài sản">
             <Button
               type="text"
@@ -297,6 +322,15 @@ export function AssetListPage() {
               aria-label="Tải lại"
             />
           </Tooltip>
+          <Button
+            icon={<QrcodeOutlined />}
+            onClick={() => {
+              setQrAssets(assets);
+              setQrBatch(true);
+            }}
+          >
+            Tem QR
+          </Button>
           <Button
             icon={<CloudUploadOutlined />}
             onClick={() => setImportOpen(true)}
@@ -401,6 +435,12 @@ export function AssetListPage() {
         open={formOpen}
         asset={editing}
         onClose={() => setFormOpen(false)}
+      />
+      <AssetQrModal
+        assets={qrAssets}
+        batch={qrBatch}
+        open={qrAssets.length > 0}
+        onClose={() => setQrAssets([])}
       />
       <AssetImportModal
         open={importOpen}

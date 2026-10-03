@@ -82,6 +82,11 @@ export async function fetchAssets(
   );
 }
 
+/** Chi tiết 1 tài sản — trang chi tiết (mở từ tem QR) + form sửa. */
+export async function fetchAsset(id: number): Promise<AssetItem> {
+  return apiClient.get<AssetItem>(`/workflow/assets/${id}`, token());
+}
+
 export async function createAsset(payload: AssetPayload): Promise<AssetItem> {
   return apiClient.post<AssetItem>('/workflow/assets', payload, token());
 }
@@ -153,7 +158,10 @@ export async function downloadAssetImportTemplate(): Promise<Blob> {
 export async function downloadAssetExport(
   filters: AssetFilters = {},
 ): Promise<Blob> {
-  return fetchBlob(`/workflow/assets/export${buildAssetQuery(filters)}`, token());
+  return fetchBlob(
+    `/workflow/assets/export${buildAssetQuery(filters)}`,
+    token(),
+  );
 }
 
 // ---------------- Nhập cây vị trí bằng Excel ----------------
@@ -181,9 +189,7 @@ export async function downloadLocationImportTemplate(): Promise<Blob> {
 }
 
 /** Xuất cây vị trí ra .xlsx (lọc theo dự án nếu có, nhập lại được ngay). */
-export async function downloadLocationExport(
-  siteId?: number,
-): Promise<Blob> {
+export async function downloadLocationExport(siteId?: number): Promise<Blob> {
   const query = siteId === undefined ? '' : `?siteId=${siteId}`;
   return fetchBlob(`/workflow/site-locations/export${query}`, token());
 }

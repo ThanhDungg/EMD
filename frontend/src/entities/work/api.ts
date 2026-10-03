@@ -32,6 +32,8 @@ export interface FetchWorksParams {
   userId?: number;
   from?: string;
   to?: string;
+  // Chỉ sự cố gắn với tài sản đó — trang chi tiết tài sản mở từ tem QR.
+  assetId?: number;
 }
 
 // Envelope phân trang kiểu source cũ: { data, total, page, limit, totalPages }.
@@ -60,6 +62,8 @@ function buildQuery(params: FetchWorksParams): string {
   if (params.userId !== undefined) query.set('userId', String(params.userId));
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
+  if (params.assetId !== undefined)
+    query.set('assetId', String(params.assetId));
   query.set('limit', String(params.limit ?? 100));
   return query.toString();
 }

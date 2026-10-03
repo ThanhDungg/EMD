@@ -5,6 +5,7 @@ import {
   createSiteLocation,
   deleteAsset,
   deleteSiteLocation,
+  fetchAsset,
   fetchAssets,
   fetchSiteLocationTree,
   importAssetsFromFile,
@@ -12,15 +13,12 @@ import {
   updateAsset,
   updateSiteLocation,
 } from './api';
-import type {
-  AssetFilters,
-  AssetPayload,
-  SiteLocationPayload,
-} from './model';
+import type { AssetFilters, AssetPayload, SiteLocationPayload } from './model';
 
 export const assetKeys = {
   all: ['assets'] as const,
   list: (filters: AssetFilters) => [...assetKeys.all, 'list', filters] as const,
+  detail: (id: number) => [...assetKeys.all, 'detail', id] as const,
   locations: (siteId?: number) =>
     [...assetKeys.all, 'locations', siteId ?? 'all'] as const,
 };
@@ -40,6 +38,15 @@ export function useAssets(filters: AssetFilters = {}, enabled = true) {
     queryKey: assetKeys.list(filters),
     queryFn: () => fetchAssets(filters),
     enabled,
+  });
+}
+
+/** Chi tiết 1 tài sản (trang chi tiết mở từ tem QR). */
+export function useAsset(id: number | null | undefined) {
+  return useQuery({
+    queryKey: assetKeys.detail(id ?? 0),
+    queryFn: () => fetchAsset(id as number),
+    enabled: typeof id === 'number' && Number.isFinite(id),
   });
 }
 

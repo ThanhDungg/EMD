@@ -138,6 +138,8 @@ export class AssetsService {
         conditionId: dto.conditionId,
         remarks: dto.remarks,
         detail: dto.detail,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
       },
       include: droplistInclude,
     });
@@ -172,6 +174,8 @@ export class AssetsService {
           : {}),
         ...(dto.remarks !== undefined ? { remarks: dto.remarks } : {}),
         ...(dto.detail !== undefined ? { detail: dto.detail } : {}),
+        ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
+        ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
       },
       include: droplistInclude,
     });

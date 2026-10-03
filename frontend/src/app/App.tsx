@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import {
   ChecklistTemplatePage,
@@ -30,6 +30,7 @@ import {
   RequireAdmin,
 } from '@/pages/admin';
 import {
+  AssetDetailPage,
   AssetListPage,
   AssetDroplistPage,
   SiteLocationPage,
@@ -41,6 +42,7 @@ import {
   ScopeWorksPage,
 } from '@/pages/home';
 import { ModulePlaceholderPage } from '@/pages/placeholder';
+import { PresetReportPage, ReportPage } from '@/pages/report';
 import { WorkDetailPage } from '@/pages/work-detail';
 import { LoginPage } from '@/pages/login';
 import { apiClient } from '@/shared/api';
@@ -118,11 +120,11 @@ function Shell() {
               </>
             }
           />
-          <Route path="input-data/countries" element={<InputDataCountryPage />} />
           <Route
-            path="input-data/regions"
-            element={<InputDataRegionPage />}
+            path="input-data/countries"
+            element={<InputDataCountryPage />}
           />
+          <Route path="input-data/regions" element={<InputDataRegionPage />} />
           <Route
             path="input-data/provinces"
             element={<InputDataProvincePage />}
@@ -151,17 +153,59 @@ function Shell() {
           <Route index element={<AssetListPage />} />
           <Route path="locations" element={<SiteLocationPage />} />
           <Route path="droplists" element={<AssetDroplistPage />} />
+          {/* Tem QR dán ngoài thực tế trỏ tới /assets/:id */}
+          <Route path=":assetId" element={<AssetDetailPage />} />
         </Route>
 
-        {/* Module chưa phát triển */}
+        {/* Báo cáo: tổng quan + khám phá tự custom + dashboard của tôi */}
         <Route path="/report" element={<HomePage onLogout={handleLogout} />}>
           <Route
             index
             element={
-              <ModulePlaceholderPage
-                moduleName="Báo cáo"
-                description="Các báo cáo tổng hợp theo dự án, tài sản và sự cố sẽ có ở đây."
-              />
+              <Suspense fallback={null}>
+                <ReportPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="explorer"
+            element={
+              <Suspense fallback={null}>
+                <ReportPage initialTab="explorer" />
+              </Suspense>
+            }
+          />
+          <Route
+            path="boards"
+            element={
+              <Suspense fallback={null}>
+                <ReportPage initialTab="boards" />
+              </Suspense>
+            }
+          />
+          {/* 3 nhóm báo cáo: hằng ngày / hoạt động / tổng quan */}
+          <Route
+            path="daily/:presetKey"
+            element={
+              <Suspense fallback={null}>
+                <PresetReportPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="activity/:presetKey"
+            element={
+              <Suspense fallback={null}>
+                <PresetReportPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="summary/:presetKey"
+            element={
+              <Suspense fallback={null}>
+                <PresetReportPage />
+              </Suspense>
             }
           />
         </Route>

@@ -24,6 +24,7 @@ import { useDroplist } from '@/entities/droplist';
 import type { AssetItem, SiteLocationNode } from '@/entities/asset';
 import { useSites } from '@/entities/work';
 import { apiErrorMessage } from '@/shared/lib';
+import { AssetLocationMap } from '@/pages/shared';
 
 const DATE_FORMAT = 'DD/MM/YYYY';
 
@@ -43,6 +44,8 @@ interface AssetFormValues {
   conditionId?: number;
   remarks?: string;
   detail?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface AssetFormModalProps {
@@ -85,6 +88,10 @@ export function AssetFormModal({ open, asset, onClose }: AssetFormModalProps) {
 
   const locationTree = useMemo(() => toTreeData(locations), [locations]);
 
+  // Toạ độ đang nhập (bấm trên bản đồ sẽ set vào 2 field này).
+  const watchLatitude = Form.useWatch('latitude', form);
+  const watchLongitude = Form.useWatch('longitude', form);
+
   // Mở modal: nạp giá trị hiện tại (nếu sửa) và suy ra site của vị trí đang có.
   useEffect(() => {
     if (!open) return;
@@ -111,6 +118,14 @@ export function AssetFormModal({ open, asset, onClose }: AssetFormModalProps) {
         conditionId: asset.conditionId ?? undefined,
         remarks: asset.remarks ?? undefined,
         detail: asset.detail ?? undefined,
+        latitude:
+          asset.latitude === null || asset.latitude === undefined
+            ? undefined
+            : Number(asset.latitude),
+        longitude:
+          asset.longitude === null || asset.longitude === undefined
+            ? undefined
+            : Number(asset.longitude),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,6 +160,8 @@ export function AssetFormModal({ open, asset, onClose }: AssetFormModalProps) {
       conditionId: values.conditionId ?? null,
       remarks: values.remarks?.trim() || undefined,
       detail: values.detail?.trim() || undefined,
+      latitude: values.latitude ?? null,
+      longitude: values.longitude ?? null,
     };
     try {
       if (asset) {
@@ -333,6 +350,54 @@ export function AssetFormModal({ open, asset, onClose }: AssetFormModalProps) {
             </Form.Item>
           </Col>
         </Row>
+
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label="Vĩ độ"
+              name="latitude"
+              help="Bấm trên bản đồ để đặt tài sản, hoặc nhập tay"
+            >
+              <InputNumber
+                min={-90}
+                max={90}
+                step={0.0000001}
+                placeholder="VD: 21.0278000"
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label="Kinh độ"
+              name="longitude"
+              help="Bấm trên bản đồ để đặt tài sản, hoặc nhập tay"
+            >
+              <InputNumber
+                min={-180}
+                max={180}
+                step={0.0000001}
+                placeholder="VD: 105.8342000"
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Form.Item label="Bản đồ vị trí tài sản">
+          <AssetLocationMap
+            latitude={watchLatitude}
+            longitude={watchLongitude}
+            editable
+            height={300}
+            onPick={(point) => {
+              form.setFieldsValue({
+                latitude: Number(point.latitude.toFixed(7)),
+                longitude: Number(point.longitude.toFixed(7)),
+              });
+            }}
+          />
+        </Form.Item>
 
         <Form.Item label="Thông tin chi tiết" name="detail">
           <Input.TextArea

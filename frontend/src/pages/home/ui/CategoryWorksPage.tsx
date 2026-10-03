@@ -26,6 +26,7 @@ import {
 import type { WorkFilters } from './WorkFilter';
 import {
   buildEmployeeOptions,
+  buildIncidentColumns,
   buildWorkColumns,
   statusTag,
 } from './workColumns';
@@ -47,6 +48,8 @@ export function CategoryWorksPage() {
 
   const activeCategory = categories.find((c) => c.id === id);
   const isChecklist = activeCategory?.code === 'CHECKLIST';
+  // Sự cố hư hỏng có bộ cột riêng (loại tài sản / phân loại sửa chữa / Phase...).
+  const isIncident = activeCategory?.code === 'INCIDENT';
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<number | null>(null);
@@ -93,21 +96,24 @@ export function CategoryWorksPage() {
   const total = pageData?.total ?? 0;
 
   const columns: ColumnsType<WorkItem> = useMemo(() => {
-    const base = buildWorkColumns(isChecklist, (w) => {
+    const openDetail = (w: WorkItem) => {
       // Bản đã xoá không mở được trang chi tiết (API chặn) → báo + khôi phục
       if (showDeleted) {
         message.info('Công việc đã xóa — bấm Khôi phục để mở lại.');
         return;
       }
       navigate(`/work/${w.id}`);
-    });
+    };
+    const base: ColumnsType<WorkItem> = isIncident
+      ? buildIncidentColumns(openDetail)
+      : buildWorkColumns(isChecklist, openDetail);
     // Thùng rác (ADMIN): thêm cột Khôi phục mở lại công việc đã xoá mềm
     if (showDeleted && isAdmin) {
       base.push({
         title: 'Thao tác',
         key: 'actions',
         width: 130,
-        render: (_, w) => (
+        render: (_: unknown, w: WorkItem) => (
           <Popconfirm
             title="Khôi phục công việc này?"
             description="Công việc sẽ hiện lại trong danh sách."
@@ -129,7 +135,14 @@ export function CategoryWorksPage() {
       });
     }
     return base;
-  }, [isChecklist, navigate, showDeleted, isAdmin, restoreMutation]);
+  }, [
+    isChecklist,
+    isIncident,
+    navigate,
+    showDeleted,
+    isAdmin,
+    restoreMutation,
+  ]);
   const employeeOptions = useMemo(
     () => buildEmployeeOptions(directory, works),
     [directory, works],

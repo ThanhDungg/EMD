@@ -56,15 +56,17 @@ export interface WorkItem {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   startDate?: string | null;
   endDate?: string | null;
+  // Ngày đóng thực tế (list API cũng trả vì đọc full row works).
+  completedAt?: string | null;
+  // Chi tiết sự cố hư hỏng (chỉ có ở loại INCIDENT; API list cũng include sẵn).
+  incidentDetail?: IncidentDetailInfo | null;
 }
 
 // Chi tiết 1 công việc (GET /workflow/works/:id) — backend include sẵn
 // category/status/assigner/handlers/site/incidentType/incidentDetail.
 export interface WorkDetail extends WorkItem {
   description?: string | null;
-  completedAt?: string | null;
   incidentType?: { id: number; name: string } | null;
-  incidentDetail?: IncidentDetailInfo | null;
   createdAt?: string | null;
 }
 

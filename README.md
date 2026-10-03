@@ -215,9 +215,15 @@ avatarPath, signaturePath, **isDeleted** (xoá mềm), **isInvestor**
     (trạng thái dùng), categoryId (danh mục tài sản), locationId (vị trí),
     supplier (nhà cung cấp), origin (xuất xứ), model, quantity + unitId
     (đơn vị tính), warrantyEnd (hạn bảo hành), conditionId (tình trạng),
-    remarks, detail (thông tin chi tiết, text tự do).
+    remarks, detail (thông tin chi tiết, text tự do), **latitude/longitude
+    Decimal(10,7)** (toạ độ đặt tài sản — chọn trên bản đồ Leaflet ở form tài sản).
     `GET /api/workflow/assets?siteId=&locationId=&categoryId=&keyword=` lọc
     theo dự án / vị trí / danh mục / trạng thái / tình trạng / từ khoá.
+  - **Tem QR tài sản + sự cố theo tài sản** — QR chứa URL
+    `{FE}/assets/:id` (dựng bằng `QRCode` của antd, tải PNG / in tem ngay trên
+    modal `AssetQrModal`). Quét tem → trang `AssetDetailPage`: hồ sơ tài sản +
+    bản đồ vị trí + bảng sự cố liên quan lấy từ
+    `GET /api/workflow/works?assetId=` (index `incident_details_asset_id_idx`).
   - **Droplist dùng chung toàn hệ thống** — 1 service + 1 controller cho 7 bảng
     cùng shape (uuid / code? / name / isDeleted):
     `asset_categories` · `asset_units` · `asset_usage_statuses` ·

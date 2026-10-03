@@ -1,10 +1,17 @@
 import { Button } from 'antd';
-import { EllipsisText, Tag } from '@/shared/ui';
+import { EllipsisText } from '@/shared/ui';
 import type { ColumnsType } from '@/shared/ui';
-import { formatDate } from '@/shared/lib';
 import { PRIORITY_LABEL } from '@/entities/work';
-import type { DirectoryUser, WorkItem, WorkStatus } from '@/entities/work';
+import type { DirectoryUser, WorkItem } from '@/entities/work';
+import {
+  buildIncidentColumns,
+  formatDay,
+  statusTag,
+} from '@/pages/shared/ui/IncidentColumns';
 import type { UserOption } from './WorkFilter';
+
+// Helper hiển thị dùng chung với bảng sự cố hư hỏng ở module Tài sản.
+export { buildIncidentColumns, formatDay, statusTag };
 
 // Độ rộng mặc định từng cột (tableLayout="fixed" như Table beca-ui source cũ).
 // Kéo mép tiêu đề để chỉnh (prop resizable của Table shared).
@@ -16,27 +23,6 @@ export const COL_WIDTH = {
   day: 120,
   priority: 120,
 } as const;
-
-export function statusTag(
-  status: WorkStatus | null | undefined,
-): React.ReactNode {
-  if (!status) return <Tag style={{ borderRadius: 3 }}>Chưa đặt</Tag>;
-  return (
-    <Tag style={{ borderRadius: 3 }}>
-      <span
-        style={{
-          display: 'inline-block',
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: status.color ?? '#8f96a5',
-          marginRight: 6,
-        }}
-      />
-      {status.name}
-    </Tag>
-  );
-}
 
 // Thanh tiến độ dạng pill: nền xám, % trắng bên trong trái, fill xanh khi > 0.
 export function ProgressPill({ value }: { value: number }): React.ReactNode {
@@ -74,15 +60,6 @@ export function ProgressPill({ value }: { value: number }): React.ReactNode {
       </span>
     </div>
   );
-}
-
-export function formatDay(value: string | null | undefined): string {
-  if (!value) return '—';
-  try {
-    return formatDate(value);
-  } catch {
-    return String(value).slice(0, 10);
-  }
 }
 
 // Cột mặc định bảng công việc mọi loại (tableLayout fixed + width rõ ràng):

@@ -451,6 +451,8 @@ model IncidentDetail {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // Màn sự cố hư hỏng + tem QR: lọc sự cố theo tài sản.
+  @@index([assetId])
   @@map("incident_details")
 }
 
@@ -1302,6 +1304,10 @@ model Asset {
   remarks       String?           @db.Text
   // Thông tin chi tiết (text tự do)
   detail        String?           @db.Text
+  // Toạ độ đặt tài sản: chọn trên bản đồ ở form tài sản, dùng cho bản đồ
+  // vị trí tài sản + in tem QR dán ngoài thực tế.
+  latitude      Decimal?          @db.Decimal(10, 7)
+  longitude     Decimal?          @db.Decimal(10, 7)
   isDeleted     Boolean           @default(false) @map("is_deleted")
   // Sự cố liên quan tới tài sản này
   incidents     IncidentDetail[]  @relation("IncidentAsset")
@@ -1526,6 +1532,29 @@ model Permission {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("permissions")
+}
+
+// ================= Báo cáo tự custom kiểu Power BI =================
+// Dashboard do người dùng tự tạo: widgets nằm trong config JSON để FE render
+// linh hoạt kiểu Power BI (mỗi widget = 1 dataset + chartType + dimensions +
+// metrics + filters + options). Không FK cứng tới User để xoá user không kẹt.
+model ReportBoard {
+  id          Int     @id @default(autoincrement())
+  uuid        String  @unique @default(uuid())
+  name        String
+  description String? @db.Text
+  // { widgets: ReportWidgetConfig[] } — shape xem reports.constants.ts ở backend
+  // + entities/report/model.ts ở frontend (giữ đồng bộ tay khi đổi).
+  config      Json    @default("{}")
+  isPublic    Boolean @default(false) @map("is_public")
+  ownerId     Int?    @map("owner_id")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@map("report_boards")
 }
 
 // ================= Phân hệ / Module ứng dụng =================

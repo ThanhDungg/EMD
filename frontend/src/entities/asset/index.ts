@@ -28,6 +28,7 @@ export {
   downloadAssetImportTemplate,
   downloadLocationExport,
   downloadLocationImportTemplate,
+  fetchAsset,
   fetchAssets,
   fetchSiteLocationTree,
   importAssetsFromFile,
@@ -38,6 +39,7 @@ export {
 } from './api';
 export {
   assetKeys,
+  useAsset,
   useAssets,
   useCreateAsset,
   useCreateSiteLocation,

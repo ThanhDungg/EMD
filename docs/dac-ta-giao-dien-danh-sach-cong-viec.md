@@ -59,6 +59,14 @@ và Tình trạng], `Tình trạng` (badge bo góc 3px + chấm màu), `Từ ng�
 Định dạng ngày `DD/MM/YYYY`. Build cột ở `buildWorkColumns()` trong
 `pages/home/ui/workColumns.tsx`.
 
+Riêng loại **Sự cố hư hỏng** (`category.code = 'INCIDENT'`) dùng bộ cột riêng
+`buildIncidentColumns()` (không có Tiến độ), theo thứ tự: `Tiêu đề`, `Vị trí`
+(`incidentDetail.locationName`, fallback `work.location`), `Loại tài sản`
+(`incidentDetail.relatedAsset`), `Phân loại sửa chữa`
+(`incidentDetail.repairType`), `Phase` (`incidentDetail.phase`), `Dự án`,
+`Tình trạng`, `Từ ngày`, `Ngày hoàn thành` (`completedAt` fallback `endDate`),
+`Ưu tiên`. API list (`GET /workflow/works`) đã include sẵn `incidentDetail`.
+
 ### 3.4 Phân trang server
 
 `GET /workflow/works` trả envelope `{ data, total, page, limit, totalPages }`.

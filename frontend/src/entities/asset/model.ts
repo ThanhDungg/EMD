@@ -80,6 +80,9 @@ export interface AssetItem {
   condition?: AssetRef | null;
   remarks?: string | null;
   detail?: string | null;
+  // Toạ độ đặt tài sản (chọn trên bản đồ). Prisma Decimal(10,7) trả về string.
+  latitude?: string | number | null;
+  longitude?: string | number | null;
 }
 
 export interface AssetFilters {
@@ -109,6 +112,8 @@ export interface AssetPayload {
   conditionId?: number | null;
   remarks?: string;
   detail?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface SiteLocationPayload {

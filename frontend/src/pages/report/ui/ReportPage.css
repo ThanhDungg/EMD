@@ -1,0 +1,124 @@
+.report-page { padding: 8px 0; }
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.report-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.report-kpi-tile {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.report-kpi-tile-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 12px;
+}
+.report-grid-cell {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.report-grid-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* --- Khám phá --- */
+.report-explorer {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.report-explorer-side {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.report-side-title {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #8c8c8c;
+  margin-top: 4px;
+}
+.report-side-hint { font-size: 12px; }
+.report-explorer-main { min-width: 0; }
+.report-chart-panel {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 480px;
+}
+.report-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.report-drill-hint {
+  font-size: 12px;
+  font-style: italic;
+}
+.report-preset .report-toolbar {
+  align-items: flex-start;
+}
+
+/* --- Bảng của tôi --- */
+.report-board-list { display: flex; flex-direction: column; }
+.report-board-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #fafafa;
+}
+.report-board-name { font-weight: 600; }
+.report-add-widget {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+@media (max-width: 1100px) {
+  .report-explorer { grid-template-columns: 1fr; }
+}

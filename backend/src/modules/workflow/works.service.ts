@@ -100,6 +100,8 @@ export interface FindWorksFilter {
   userId?: number;
   from?: string;
   to?: string;
+  // Chỉ sự cố gắn với 1 tài sản (trang chi tiết tài sản mở từ tem QR).
+  assetId?: number;
 }
 
 export interface WorksPage<T> {
@@ -234,6 +236,7 @@ export class WorksService {
       userId,
       from,
       to,
+      assetId,
     } = filter;
     const take = Math.min(Math.max(limit, 1), WORKS_MAX_LIMIT);
     const currentPage = Math.max(page, 1);
@@ -267,6 +270,10 @@ export class WorksService {
     if (statusId !== undefined) and.push({ statusId });
     if (isRecurrence !== undefined) and.push({ isRecurrence });
     if (siteId !== undefined) and.push({ siteId });
+    // Sự cố của 1 tài sản: incident_detail đang gắn asset đó (bản đã xoá
+    // incident_detail không tính — list khác cũng không hiện).
+    if (assetId !== undefined)
+      and.push({ incidentDetail: { isDeleted: false, assetId } });
     if (userId !== undefined) {
       and.push({ OR: [{ assignerId: userId }, { handlers: { some: { userId } } }] });
     }

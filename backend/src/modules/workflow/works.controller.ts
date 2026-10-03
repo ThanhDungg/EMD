@@ -37,6 +37,8 @@ export class WorksController {
   // (?scope=assigned: tôi giao | handled: tôi thực hiện | followed: tôi theo dõi)
   // + lọc nâng cao drawer FE (?siteId=dự án, ?userId=nhân viên giao/thực hiện,
   // ?from/?to=YYYY-MM-DD khoảng Từ → Đến).
+  // (?assetId=1: chỉ sự cố gắn với tài sản đó — dùng cho trang chi tiết tài sản
+  // mở từ tem QR.)
   // Xoá mềm: mặc định chỉ isDeleted = false. ADMIN có thêm ?includeDeleted=true
   // (thấy tất cả) và ?deletedOnly=true (chỉ bản đã xoá — thùng rác).
   // Phân trang: ?page=1&limit=20 (max 100) — bắt buộc vì ~1000 việc/ngày.
@@ -57,6 +59,7 @@ export class WorksController {
     @Query('userId') userId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('assetId') assetId?: string,
   ) {
     const { isAdmin, handledOnly } = accessOf(user);
     return this.worksService.findAll({
@@ -76,6 +79,7 @@ export class WorksController {
       userId: userId !== undefined ? Number(userId) : undefined,
       from,
       to,
+      assetId: assetId !== undefined ? Number(assetId) : undefined,
     });
   }
 

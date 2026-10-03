@@ -1,4 +1,6 @@
 // pages/assets — public API của slice module Tài sản.
+export { AssetDetailPage } from './ui/AssetDetailPage';
+export { AssetQrModal } from './ui/AssetQrModal';
 export { AssetListPage } from './ui/AssetListPage';
 export { AssetFormModal } from './ui/AssetFormModal';
 export type { AssetFormModalProps } from './ui/AssetFormModal';
