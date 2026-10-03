@@ -9,9 +9,9 @@ import { GroupsModule } from './modules/groups/groups.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { ModuleModule } from './modules/module/module.module.js';
 import { PermissionsModule } from './modules/permissions/permissions.module.js';
+import { ReportsModule } from './modules/reports/reports.module.js';
 import { UploadsModule } from './modules/uploads/uploads.module.js';
 import { UsersModule } from './modules/users/users.module.js';
-import { ReportsModule } from './modules/reports/reports.module.js';
 import { WorkflowModule } from './modules/workflow/workflow.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
@@ -32,6 +32,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     GroupsModule,
     PermissionsModule,
     ModuleModule,
+    ReportsModule,
     // Lưu + phục vụ ảnh đính kèm (ngoài public, qua JwtAuthGuard)
     UploadsModule,
     // --- Nghiệp vụ ---
